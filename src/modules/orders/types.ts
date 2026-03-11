@@ -64,6 +64,10 @@ export type Pedido = PedidoListItem & {
   observaciones: string | null;
   surtido: number | null;
   rollo: number | null;
+  total_pagado?: number;
+  saldo?: number;
+  pagos?: PedidoPagoItem[];
+  historial_documentos?: PedidoHistorialDocumento[];
   direccion?: PedidoDireccion | null;
   detalle: PedidoDetalleLinea[];
 };
@@ -123,6 +127,91 @@ export type PedidoTransitionResponse = {
     to?: { code: number; label: string };
   };
   item: Pedido;
+};
+
+export type PedidoPagoItem = {
+  id: number;
+  monto: number;
+  fecha_pago: string;
+  referencia: string | null;
+  notas: string | null;
+  created_by: string | null;
+  created_at: number | null;
+};
+
+export type PedidoPagosResponse = {
+  ok: boolean;
+  pedido_id: number;
+  cobranza_status: string | null;
+  totals: {
+    total_pedido: number;
+    total_pagado: number;
+    saldo: number;
+  };
+  items: PedidoPagoItem[];
+};
+
+export type PedidoRegistrarPagoPayload = {
+  monto: number;
+  fecha_pago?: string;
+  referencia?: string;
+  notas?: string;
+};
+
+export type PedidoRegistrarPagoResponse = {
+  ok: boolean;
+  message: string;
+  item: PedidoPagoItem;
+  pedido_totals: {
+    total_pedido: number;
+    total_pagado: number;
+    saldo: number;
+    cobranza_status: string | null;
+  };
+};
+
+export type PedidoDeletePagoResponse = {
+  ok: boolean;
+  message: string;
+  pedido_totals: {
+    total_pedido: number;
+    total_pagado: number;
+    saldo: number;
+    cobranza_status: string | null;
+  };
+};
+
+export type PedidoCxcUpdatePayload = {
+  no_factura?: string;
+};
+
+export type PedidoCxcUpdateResponse = {
+  ok: boolean;
+  message: string;
+  item: Pedido;
+};
+
+export type PedidoHistorialDocumento = {
+  id_pedido_historial: number;
+  subtotal_pedido: number;
+  surtido_pedido: number;
+  rollos_surtido: number | null;
+  fecha_surtido: string | null;
+  numero_factura: string | null;
+};
+
+export type PedidoRegistrarDocumentoPayload = {
+  id_pedido_historial: number;
+  numero_factura?: string;
+};
+
+export type PedidoRegistrarDocumentoResponse = {
+  ok: boolean;
+  message: string;
+  item: {
+    id_pedido_historial: number;
+    numero_factura: string;
+  };
 };
 
 export type WarehouseLineUpdateInput = {

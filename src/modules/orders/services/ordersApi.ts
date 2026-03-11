@@ -1,8 +1,16 @@
 import { apiRequest } from '../../../shared/api/http';
 import {
+  PedidoCxcUpdatePayload,
+  PedidoCxcUpdateResponse,
   PedidoCreatePayload,
   PedidoCreateResponse,
+  PedidoDeletePagoResponse,
   PedidoDetailResponse,
+  PedidoPagosResponse,
+  PedidoRegistrarDocumentoPayload,
+  PedidoRegistrarDocumentoResponse,
+  PedidoRegistrarPagoPayload,
+  PedidoRegistrarPagoResponse,
   PedidoListResponse,
   PedidoTransitionResponse,
   WarehouseUpdatePayload,
@@ -79,6 +87,38 @@ export const ordersApi = {
     apiRequest<WarehouseUpdateResponse>(`/pedidos/${orderId}/almacen`, {
       token,
       method: 'PATCH',
+      body: payload,
+    }),
+
+  pagos: (token: string, orderId: number) =>
+    apiRequest<PedidoPagosResponse>(`/pedidos/${orderId}/pagos`, {
+      token,
+    }),
+
+  registrarPago: (token: string, orderId: number, payload: PedidoRegistrarPagoPayload) =>
+    apiRequest<PedidoRegistrarPagoResponse>(`/pedidos/${orderId}/pagos`, {
+      token,
+      method: 'POST',
+      body: payload,
+    }),
+
+  deletePago: (token: string, orderId: number, pagoId: number) =>
+    apiRequest<PedidoDeletePagoResponse>(`/pedidos/${orderId}/pagos/${pagoId}`, {
+      token,
+      method: 'DELETE',
+    }),
+
+  updateCxc: (token: string, orderId: number, payload: PedidoCxcUpdatePayload) =>
+    apiRequest<PedidoCxcUpdateResponse>(`/pedidos/${orderId}/ctas-cobrar`, {
+      token,
+      method: 'PATCH',
+      body: payload,
+    }),
+
+  registrarDocumento: (token: string, orderId: number, payload: PedidoRegistrarDocumentoPayload) =>
+    apiRequest<PedidoRegistrarDocumentoResponse>(`/pedidos/${orderId}/documento`, {
+      token,
+      method: 'POST',
       body: payload,
     }),
 };

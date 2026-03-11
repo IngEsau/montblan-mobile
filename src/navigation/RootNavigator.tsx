@@ -10,9 +10,10 @@ import { OrderDetailScreen } from '../modules/orders/screens/OrderDetailScreen';
 import { SalesOrderFormScreen } from '../modules/orders/screens/SalesOrderFormScreen';
 import { WarehouseOrderFormScreen } from '../modules/orders/screens/WarehouseOrderFormScreen';
 import { WarehouseDeliveryScreen } from '../modules/orders/screens/WarehouseDeliveryScreen';
+import { CxcOrderFormScreen } from '../modules/orders/screens/CxcOrderFormScreen';
 import { ProductsCatalogScreen } from '../modules/catalog/screens/ProductsCatalogScreen';
 import { ClientsCatalogScreen } from '../modules/catalog/screens/ClientsCatalogScreen';
-import { AppTabParamList, RootStackParamList } from './types';
+import { AppTabParamList, OrderMode, RootStackParamList } from './types';
 import { palette } from '../shared/theme/palette';
 import { typography } from '../shared/theme/typography';
 
@@ -23,14 +24,23 @@ type TabsNavigatorProps = {
   rootNavigation: NativeStackNavigationProp<RootStackParamList>;
 };
 
+function normalizeRole(role: string | null | undefined) {
+  return String(role ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+}
+
 function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
   const { logout, user } = useAuth();
-  const role = (user?.rol || '').toUpperCase();
+  const role = normalizeRole(user?.rol);
   const hasRole = role.trim().length > 0;
   const isAdmin = role.includes('THECREATOR') || role.includes('ADMIN') || role.includes('SUPER');
   const canSales = !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
   const canWarehouse = !hasRole || isAdmin || role.includes('ALMACEN');
-  const availableModes: Array<'sales' | 'warehouse'> = [];
+  const canCxc = isAdmin || role.includes('CTAS') || role.includes('COBRAR') || role.includes('CXC');
+  const availableModes: OrderMode[] = [];
 
   if (canSales) {
     availableModes.push('sales');
@@ -38,6 +48,14 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
 
   if (canWarehouse) {
     availableModes.push('warehouse');
+  }
+
+  if (canCxc) {
+    availableModes.push('cxc');
+  }
+
+  if (availableModes.length === 0) {
+    availableModes.push('sales');
   }
 
   return (
@@ -125,15 +143,27 @@ function AppNavigator() {
       <RootStack.Screen
         name="PedidoDetalle"
         options={{ title: 'Detalle de pedido' }}
-        children={({ route, navigation }) => (
-          <OrderDetailScreen
-            orderId={route.params.orderId}
-            mode={route.params.mode}
-            onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
-            onOpenWarehouseDelivery={(orderId) => navigation.navigate('CapturaEntregaAlmacen', { orderId })}
-            onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
-          />
-        )}
+        children={({ route, navigation }) =>
+          route.params.mode === 'cxc' ? (
+            <CxcOrderFormScreen
+              orderId={route.params.orderId}
+              onDone={(orderId) =>
+                navigation.replace('PedidoDetalle', {
+                  orderId,
+                  mode: 'warehouse',
+                })
+              }
+            />
+          ) : (
+            <OrderDetailScreen
+              orderId={route.params.orderId}
+              mode={route.params.mode}
+              onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
+              onOpenWarehouseDelivery={(orderId) => navigation.navigate('CapturaEntregaAlmacen', { orderId })}
+              onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
+            />
+          )
+        }
       />
       <RootStack.Screen
         name="NuevoPedidoVenta"

@@ -18,14 +18,16 @@ import { ApiError } from '../../../shared/api/http';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
+import { OrderMode } from '../../../navigation/types';
 
 type OrdersListScreenProps = {
-  availableModes: Array<'sales' | 'warehouse'>;
-  onOpenDetail: (orderId: number, mode: 'sales' | 'warehouse') => void;
+  availableModes: OrderMode[];
+  onOpenDetail: (orderId: number, mode: OrderMode) => void;
   onCreateSalesOrder?: () => void;
 };
 
 const SALES_STATUS = 10;
+const CXC_STATUS = 20;
 const WAREHOUSE_VALIDATION_STATUS = 30;
 const WAREHOUSE_DELIVERY_STATUS = 45;
 
@@ -35,11 +37,11 @@ export function OrdersListScreen({
   onCreateSalesOrder,
 }: OrdersListScreenProps) {
   const { token } = useAuth();
-  const resolvedModes = useMemo<Array<'sales' | 'warehouse'>>(
+  const resolvedModes = useMemo<OrderMode[]>(
     () => (availableModes.length > 0 ? availableModes : ['sales']),
     [availableModes],
   );
-  const [mode, setMode] = useState<'sales' | 'warehouse'>(resolvedModes[0]);
+  const [mode, setMode] = useState<OrderMode>(resolvedModes[0]);
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
   const [warehouseStage, setWarehouseStage] = useState<'validation' | 'delivery'>('validation');
@@ -56,6 +58,8 @@ export function OrdersListScreen({
   const statusFilter =
     mode === 'sales'
       ? SALES_STATUS
+      : mode === 'cxc'
+        ? CXC_STATUS
       : warehouseStage === 'validation'
         ? WAREHOUSE_VALIDATION_STATUS
         : WAREHOUSE_DELIVERY_STATUS;
@@ -64,10 +68,21 @@ export function OrdersListScreen({
     () =>
       mode === 'sales'
         ? 'Pedidos de Ventas'
+        : mode === 'cxc'
+          ? 'Pedidos - Ctas x Cobrar'
         : warehouseStage === 'validation'
           ? 'Almacén: Validación'
           : 'Almacén: Ruta y entrega',
     [mode, warehouseStage],
+  );
+
+  const modeButtons = useMemo(
+    () =>
+      resolvedModes.map((key) => ({
+        key,
+        label: key === 'sales' ? 'Ventas' : key === 'warehouse' ? 'Almacén' : 'CXC',
+      })),
+    [resolvedModes],
   );
 
   const fetchOrders = useCallback(
@@ -113,24 +128,17 @@ export function OrdersListScreen({
     <View style={styles.container}>
       {resolvedModes.length > 1 ? (
         <View style={styles.modeRow}>
-          <Pressable
-            style={[styles.modeButton, mode === 'sales' && styles.modeButtonActive]}
-            onPress={() => setMode('sales')}
-          >
-            <Text style={[styles.modeButtonLabel, mode === 'sales' && styles.modeButtonLabelActive]}>
-              Ventas
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.modeButton, mode === 'warehouse' && styles.modeButtonActive]}
-            onPress={() => setMode('warehouse')}
-          >
-            <Text
-              style={[styles.modeButtonLabel, mode === 'warehouse' && styles.modeButtonLabelActive]}
+          {modeButtons.map((item) => (
+            <Pressable
+              key={item.key}
+              style={[styles.modeButton, mode === item.key && styles.modeButtonActive]}
+              onPress={() => setMode(item.key)}
             >
-              Almacén
-            </Text>
-          </Pressable>
+              <Text style={[styles.modeButtonLabel, mode === item.key && styles.modeButtonLabelActive]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
 
@@ -216,6 +224,8 @@ export function OrdersListScreen({
               subtitle={
                 mode === 'sales'
                   ? 'Ajusta la búsqueda o crea un pedido nuevo desde Ventas.'
+                  : mode === 'cxc'
+                    ? 'No hay pedidos pendientes en Ctas x Cobrar.'
                   : warehouseStage === 'validation'
                     ? 'No hay pedidos pendientes de validación de almacén.'
                     : 'No hay pedidos en almacén final para ruta/entrega.'

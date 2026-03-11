@@ -17,10 +17,11 @@ import { formatDateYmd, formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { ordersApi } from '../services/ordersApi';
 import { Pedido } from '../types';
+import { OrderMode } from '../../../navigation/types';
 
 type OrderDetailScreenProps = {
   orderId: number;
-  mode: 'sales' | 'warehouse';
+  mode: OrderMode;
   onOpenWarehouseCapture: (orderId: number) => void;
   onOpenWarehouseDelivery: (orderId: number) => void;
   onEditCaptureOrder: (orderId: number) => void;
