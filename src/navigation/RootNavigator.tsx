@@ -9,6 +9,7 @@ import { OrdersListScreen } from '../modules/orders/screens/OrdersListScreen';
 import { OrderDetailScreen } from '../modules/orders/screens/OrderDetailScreen';
 import { SalesOrderFormScreen } from '../modules/orders/screens/SalesOrderFormScreen';
 import { WarehouseOrderFormScreen } from '../modules/orders/screens/WarehouseOrderFormScreen';
+import { WarehouseDeliveryScreen } from '../modules/orders/screens/WarehouseDeliveryScreen';
 import { AppTabParamList, RootStackParamList } from './types';
 import { palette } from '../shared/theme/palette';
 import { typography } from '../shared/theme/typography';
@@ -21,7 +22,12 @@ type TabsNavigatorProps = {
 };
 
 function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const role = (user?.rol || '').toUpperCase();
+  const hasRole = role.trim().length > 0;
+  const isAdmin = role.includes('THECREATOR') || role.includes('ADMIN') || role.includes('SUPER');
+  const canSales = !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
+  const canWarehouse = !hasRole || isAdmin || role.includes('ALMACEN');
 
   return (
     <Tab.Navigator
@@ -59,34 +65,38 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
         ),
       })}
     >
-      <Tab.Screen name="Ventas" options={{ title: 'Ventas' }}>
-        {() => (
-          <OrdersListScreen
-            mode="sales"
-            onOpenDetail={(orderId) =>
-              rootNavigation.navigate('PedidoDetalle', {
-                orderId,
-                mode: 'sales',
-              })
-            }
-            onCreateSalesOrder={() => rootNavigation.navigate('NuevoPedidoVenta')}
-          />
-        )}
-      </Tab.Screen>
+      {canSales ? (
+        <Tab.Screen name="Ventas" options={{ title: 'Ventas' }}>
+          {() => (
+            <OrdersListScreen
+              mode="sales"
+              onOpenDetail={(orderId) =>
+                rootNavigation.navigate('PedidoDetalle', {
+                  orderId,
+                  mode: 'sales',
+                })
+              }
+              onCreateSalesOrder={() => rootNavigation.navigate('NuevoPedidoVenta')}
+            />
+          )}
+        </Tab.Screen>
+      ) : null}
 
-      <Tab.Screen name="Almacen" options={{ title: 'Almacén' }}>
-        {() => (
-          <OrdersListScreen
-            mode="warehouse"
-            onOpenDetail={(orderId) =>
-              rootNavigation.navigate('PedidoDetalle', {
-                orderId,
-                mode: 'warehouse',
-              })
-            }
-          />
-        )}
-      </Tab.Screen>
+      {canWarehouse ? (
+        <Tab.Screen name="Almacen" options={{ title: 'Almacén' }}>
+          {() => (
+            <OrdersListScreen
+              mode="warehouse"
+              onOpenDetail={(orderId) =>
+                rootNavigation.navigate('PedidoDetalle', {
+                  orderId,
+                  mode: 'warehouse',
+                })
+              }
+            />
+          )}
+        </Tab.Screen>
+      ) : null}
     </Tab.Navigator>
   );
 }
@@ -117,6 +127,7 @@ function AppNavigator() {
             orderId={route.params.orderId}
             mode={route.params.mode}
             onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
+            onOpenWarehouseDelivery={(orderId) => navigation.navigate('CapturaEntregaAlmacen', { orderId })}
           />
         )}
       />
@@ -139,6 +150,21 @@ function AppNavigator() {
         options={{ title: 'Captura de almacén' }}
         children={({ route, navigation }) => (
           <WarehouseOrderFormScreen
+            orderId={route.params.orderId}
+            onDone={(orderId) =>
+              navigation.replace('PedidoDetalle', {
+                orderId,
+                mode: 'warehouse',
+              })
+            }
+          />
+        )}
+      />
+      <RootStack.Screen
+        name="CapturaEntregaAlmacen"
+        options={{ title: 'Ruta y fecha de entrega' }}
+        children={({ route, navigation }) => (
+          <WarehouseDeliveryScreen
             orderId={route.params.orderId}
             onDone={(orderId) =>
               navigation.replace('PedidoDetalle', {

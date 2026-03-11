@@ -40,7 +40,17 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
   const [clienteModalOpen, setClienteModalOpen] = useState(false);
   const [productoModalOpen, setProductoModalOpen] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
+  const [noPedido, setNoPedido] = useState('');
   const [fechaEntrega, setFechaEntrega] = useState(getTodayYmd());
+  const [clienteCondiciones, setClienteCondiciones] = useState('');
+  const [clienteCorreo, setClienteCorreo] = useState('');
+  const [clienteRfc, setClienteRfc] = useState('');
+  const [usoCfdi, setUsoCfdi] = useState('');
+  const [codigoPostal, setCodigoPostal] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [numInt, setNumInt] = useState('');
+  const [numExt, setNumExt] = useState('');
+  const [referenciaDireccion, setReferenciaDireccion] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
@@ -155,8 +165,16 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
       return 'Debes seleccionar un cliente.';
     }
 
+    if (!noPedido.trim()) {
+      return 'Debes capturar el número de pedido.';
+    }
+
     if (!fechaEntrega || fechaEntrega < getTodayYmd()) {
       return 'La fecha de entrega no puede ser menor a hoy.';
+    }
+
+    if (!direccion.trim()) {
+      return 'Debes capturar la dirección del pedido.';
     }
 
     if (lines.length === 0) {
@@ -199,12 +217,24 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
       const payload = {
         pedido: {
           no_cliente: selectedCliente.clave,
+          no_pedido: noPedido.trim(),
           cliente_razon_social: selectedCliente.nombre_comercial || selectedCliente.nombre,
           cliente_telefono: selectedCliente.telefono || '',
+          cliente_correo: clienteCorreo.trim() || undefined,
+          cliente_rfc: clienteRfc.trim() || undefined,
+          uso_cfdi: usoCfdi.trim() || undefined,
+          cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
           fecha_entrega: fechaEntrega,
           observaciones,
           vendedor: user?.username || 'movil',
+        },
+        direccion: {
+          direccion: direccion.trim(),
+          num_ext: numInt.trim() || undefined,
+          num_int: numExt.trim() || undefined,
+          referencia: referenciaDireccion.trim() || undefined,
+          codigo_postal: codigoPostal.trim() || undefined,
         },
         detalle: lines.map((line) => {
           const qty = Number(line.cantidad);
@@ -255,6 +285,15 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
         </Text>
       </Pressable>
 
+      <Text style={styles.label}>No pedido</Text>
+      <TextInput
+        value={noPedido}
+        onChangeText={setNoPedido}
+        placeholder="Ej. 1001"
+        style={styles.input}
+        autoCapitalize="none"
+      />
+
       <Text style={styles.label}>Tipo de comprobante</Text>
       <View style={styles.toggleRow}>
         <Pressable
@@ -278,6 +317,88 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
         placeholder="2026-03-30"
         style={styles.input}
         autoCapitalize="none"
+      />
+
+      <Text style={styles.label}>Condiciones</Text>
+      <TextInput
+        value={clienteCondiciones}
+        onChangeText={setClienteCondiciones}
+        placeholder="Ej. Crédito 15 días / Contado"
+        style={styles.input}
+      />
+
+      <Text style={styles.label}>Correo cliente (opcional)</Text>
+      <TextInput
+        value={clienteCorreo}
+        onChangeText={setClienteCorreo}
+        placeholder="correo@dominio.com"
+        style={styles.input}
+        autoCapitalize="none"
+      />
+
+      <Text style={styles.label}>RFC cliente (opcional)</Text>
+      <TextInput
+        value={clienteRfc}
+        onChangeText={setClienteRfc}
+        placeholder="XAXX010101000"
+        style={styles.input}
+        autoCapitalize="characters"
+      />
+
+      <Text style={styles.label}>Uso CFDI (opcional)</Text>
+      <TextInput
+        value={usoCfdi}
+        onChangeText={setUsoCfdi}
+        placeholder="Ej. G03"
+        style={styles.input}
+        autoCapitalize="characters"
+      />
+
+      <Text style={styles.label}>C.P. (opcional)</Text>
+      <TextInput
+        value={codigoPostal}
+        onChangeText={setCodigoPostal}
+        placeholder="Ej. 77500"
+        style={styles.input}
+        keyboardType="number-pad"
+      />
+
+      <Text style={styles.label}>Dirección</Text>
+      <TextInput
+        value={direccion}
+        onChangeText={setDireccion}
+        placeholder="Calle y número"
+        style={styles.input}
+      />
+
+      <View style={styles.lineRow}>
+        <View style={styles.lineInputWrap}>
+          <Text style={styles.label}>No int</Text>
+          <TextInput
+            value={numInt}
+            onChangeText={setNumInt}
+            placeholder="Ej. 12"
+            style={styles.input}
+          />
+        </View>
+        <View style={styles.lineInputWrap}>
+          <Text style={styles.label}>No ext</Text>
+          <TextInput
+            value={numExt}
+            onChangeText={setNumExt}
+            placeholder="Ej. A"
+            style={styles.input}
+          />
+        </View>
+      </View>
+
+      <Text style={styles.label}>Referencia dirección (opcional)</Text>
+      <TextInput
+        value={referenciaDireccion}
+        onChangeText={setReferenciaDireccion}
+        placeholder="Entre calles, puntos de referencia, etc."
+        style={[styles.input, styles.textarea]}
+        multiline
       />
 
       <Text style={styles.label}>Observaciones</Text>
@@ -360,6 +481,7 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
                 style={styles.modalItem}
                 onPress={() => {
                   setSelectedCliente(cliente);
+                  setDireccion((cliente.calle || '').trim());
                   setClienteModalOpen(false);
                 }}
               >

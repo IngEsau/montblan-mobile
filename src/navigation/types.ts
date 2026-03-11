@@ -8,4 +8,5 @@ export type RootStackParamList = {
   PedidoDetalle: { orderId: number; mode: 'sales' | 'warehouse' };
   NuevoPedidoVenta: undefined;
   CapturaAlmacen: { orderId: number };
+  CapturaEntregaAlmacen: { orderId: number };
 };

@@ -31,6 +31,13 @@ function buildOrdersQuery({ search, status, page = 1 }: ListOrdersParams) {
   return params.toString();
 }
 
+export type PedidoTransitionTarget = 'almacen' | 'ctas_cobrar' | 'almacen_final' | 'terminado';
+
+type TransitionPayload = {
+  ruta?: string;
+  fecha_entrega?: string;
+};
+
 export const ordersApi = {
   list: (token: string, params: ListOrdersParams) =>
     apiRequest<PedidoListResponse>(`/pedidos?${buildOrdersQuery(params)}`, {
@@ -49,11 +56,16 @@ export const ordersApi = {
       body: payload,
     }),
 
-  transition: (token: string, orderId: number, to: 'almacen' | 'ctas_cobrar' | 'almacen_final' | 'terminado') =>
+  transition: (
+    token: string,
+    orderId: number,
+    to: PedidoTransitionTarget,
+    payload: TransitionPayload = {},
+  ) =>
     apiRequest<PedidoTransitionResponse>(`/pedidos/${orderId}/transition`, {
       token,
       method: 'POST',
-      body: { to },
+      body: { to, ...payload },
     }),
 
   updateWarehouse: (token: string, orderId: number, payload: WarehouseUpdatePayload) =>

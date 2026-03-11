@@ -25,21 +25,33 @@ type OrdersListScreenProps = {
 };
 
 const SALES_STATUS = 10;
-const WAREHOUSE_STATUS = 30;
+const WAREHOUSE_VALIDATION_STATUS = 30;
+const WAREHOUSE_DELIVERY_STATUS = 45;
 
 export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: OrdersListScreenProps) {
   const { token } = useAuth();
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
+  const [warehouseStage, setWarehouseStage] = useState<'validation' | 'delivery'>('validation');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const statusFilter = mode === 'sales' ? SALES_STATUS : WAREHOUSE_STATUS;
+  const statusFilter =
+    mode === 'sales'
+      ? SALES_STATUS
+      : warehouseStage === 'validation'
+        ? WAREHOUSE_VALIDATION_STATUS
+        : WAREHOUSE_DELIVERY_STATUS;
 
   const title = useMemo(
-    () => (mode === 'sales' ? 'Pedidos de Ventas' : 'Pedidos de Almacén'),
-    [mode],
+    () =>
+      mode === 'sales'
+        ? 'Pedidos de Ventas'
+        : warehouseStage === 'validation'
+          ? 'Almacén: Validación'
+          : 'Almacén: Ruta y entrega',
+    [mode, warehouseStage],
   );
 
   const fetchOrders = useCallback(
@@ -90,6 +102,37 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
         ) : null}
       </View>
 
+      {mode === 'warehouse' ? (
+        <View style={styles.stageRow}>
+          <Pressable
+            style={[styles.stageButton, warehouseStage === 'validation' && styles.stageButtonActive]}
+            onPress={() => setWarehouseStage('validation')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                warehouseStage === 'validation' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Validación
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.stageButton, warehouseStage === 'delivery' && styles.stageButtonActive]}
+            onPress={() => setWarehouseStage('delivery')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                warehouseStage === 'delivery' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Ruta / Entrega
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.searchRow}>
         <TextInput
           value={search}
@@ -127,7 +170,13 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
           ListEmptyComponent={
             <EmptyState
               title="No hay pedidos en esta fase"
-              subtitle="Ajusta la búsqueda o crea un pedido nuevo desde Ventas."
+              subtitle={
+                mode === 'sales'
+                  ? 'Ajusta la búsqueda o crea un pedido nuevo desde Ventas.'
+                  : warehouseStage === 'validation'
+                    ? 'No hay pedidos pendientes de validación de almacén.'
+                    : 'No hay pedidos en almacén final para ruta/entrega.'
+              }
             />
           }
         />
@@ -165,6 +214,33 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  stageRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  stageButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  stageButtonActive: {
+    backgroundColor: palette.primary,
+    borderColor: palette.primary,
+  },
+  stageButtonLabel: {
+    color: palette.navy,
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  stageButtonLabelActive: {
+    color: '#fff',
+    fontFamily: typography.semiBold,
   },
   searchRow: {
     flexDirection: 'row',

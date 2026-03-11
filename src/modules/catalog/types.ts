@@ -13,6 +13,7 @@ export type Cliente = {
   clave: string;
   nombre: string;
   nombre_comercial: string | null;
+  calle: string | null;
   telefono: string | null;
   saldo: number;
 };

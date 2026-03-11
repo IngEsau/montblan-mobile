@@ -44,6 +44,10 @@ function buildLine(line: PedidoDetalleLinea): DraftWarehouseLine {
   };
 }
 
+function isAlmacenStatusComplete(value: string | null | undefined) {
+  return (value || '').trim().toUpperCase() === 'COMPLETO';
+}
+
 export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderFormScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
@@ -113,6 +117,10 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
   const allComplete = useMemo(
     () => parsedLines.length > 0 && parsedLines.every((line) => Number.isFinite(line.surtido) && line.surtido >= line.cantidad),
     [parsedLines],
+  );
+  const isCompleteByOrder = useMemo(
+    () => isAlmacenStatusComplete(order?.almacen_status),
+    [order?.almacen_status],
   );
 
   const updateLineInput = (lineId: number, field: 'surtidoInput' | 'rolloInput', value: string) => {
@@ -276,7 +284,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         <Text style={styles.summaryLine}>Total rollos: {totalRollos.toFixed(2)}</Text>
         <Text style={styles.summaryLine}>Total faltante: {totalFaltante.toFixed(2)}</Text>
         <Text style={styles.summaryStatus}>
-          Estado sugerido: {allComplete ? 'COMPLETO' : 'STANDBY (PARCIAL)'}
+          Estado sugerido: {allComplete ? 'COMPLETO' : 'STANDBY (PARCIAL)'} | Estado actual:{' '}
+          {order.almacen_status || '-'}
         </Text>
       </View>
 
@@ -286,10 +295,16 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         <Text style={styles.saveLabel}>{isSaving ? 'Guardando...' : 'Guardar captura'}</Text>
       </Pressable>
 
-      {allComplete ? (
+      {isCompleteByOrder ? (
         <Pressable style={styles.sendButton} onPress={sendToCtasCobrar} disabled={isSaving}>
           <Text style={styles.sendLabel}>Enviar a CTAS X COBRAR</Text>
         </Pressable>
+      ) : null}
+
+      {!isCompleteByOrder ? (
+        <Text style={styles.helperInfo}>
+          Para enviar a CTAS X COBRAR, primero guarda la captura y confirma que el estatus quede en COMPLETO.
+        </Text>
       ) : null}
     </ScrollView>
   );
@@ -406,6 +421,13 @@ const styles = StyleSheet.create({
     color: palette.danger,
     fontFamily: typography.medium,
     fontSize: 12,
+  },
+  helperInfo: {
+    marginTop: 8,
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    lineHeight: 18,
   },
   saveButton: {
     marginTop: 12,

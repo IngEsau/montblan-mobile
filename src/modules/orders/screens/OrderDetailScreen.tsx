@@ -22,9 +22,15 @@ type OrderDetailScreenProps = {
   orderId: number;
   mode: 'sales' | 'warehouse';
   onOpenWarehouseCapture: (orderId: number) => void;
+  onOpenWarehouseDelivery: (orderId: number) => void;
 };
 
-export function OrderDetailScreen({ orderId, mode, onOpenWarehouseCapture }: OrderDetailScreenProps) {
+export function OrderDetailScreen({
+  orderId,
+  mode,
+  onOpenWarehouseCapture,
+  onOpenWarehouseDelivery,
+}: OrderDetailScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,9 +62,13 @@ export function OrderDetailScreen({ orderId, mode, onOpenWarehouseCapture }: Ord
     fetchDetail();
   }, [fetchDetail]);
 
-  const canSendToWarehouse = useMemo(() => order?.status === 10, [order?.status]);
+  const canSendToWarehouse = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
   const canCaptureWarehouse = useMemo(
     () => mode === 'warehouse' && order?.status === 30,
+    [mode, order?.status],
+  );
+  const canCaptureWarehouseDelivery = useMemo(
+    () => mode === 'warehouse' && order?.status === 45,
     [mode, order?.status],
   );
 
@@ -108,6 +118,8 @@ export function OrderDetailScreen({ orderId, mode, onOpenWarehouseCapture }: Ord
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
         <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text>
+        <Text style={styles.meta}>Ruta: {order.ruta || '-'}</Text>
+        <Text style={styles.meta}>Cobranza: {order.ctas_cobrar_status || '-'}</Text>
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
         <View style={styles.amountsRow}>
@@ -168,6 +180,15 @@ export function OrderDetailScreen({ orderId, mode, onOpenWarehouseCapture }: Ord
           onPress={() => onOpenWarehouseCapture(order.id)}
         >
           <Text style={styles.actionLabel}>Capturar Almacén</Text>
+        </Pressable>
+      ) : null}
+
+      {canCaptureWarehouseDelivery ? (
+        <Pressable
+          style={[styles.actionButton, styles.actionButtonDelivery]}
+          onPress={() => onOpenWarehouseDelivery(order.id)}
+        >
+          <Text style={styles.actionLabel}>Capturar ruta y entrega</Text>
         </Pressable>
       ) : null}
     </ScrollView>
@@ -306,6 +327,9 @@ const styles = StyleSheet.create({
   },
   actionButtonWarehouse: {
     backgroundColor: palette.navy,
+  },
+  actionButtonDelivery: {
+    backgroundColor: '#4a6da7',
   },
   actionLabel: {
     color: '#fff',

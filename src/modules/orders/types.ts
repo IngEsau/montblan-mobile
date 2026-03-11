@@ -38,6 +38,20 @@ export type PedidoDetalleLinea = {
   disponibilidad_ok: boolean | null;
 };
 
+export type PedidoDireccion = {
+  id?: number;
+  direccion: string | null;
+  num_ext: string | null;
+  num_int: string | null;
+  referencia: string | null;
+  codigo_postal: string | null;
+  codigo_postal_id: number | null;
+  estado_id: number | null;
+  estado: string | null;
+  municipio_id: number | null;
+  municipio: string | null;
+};
+
 export type Pedido = PedidoListItem & {
   ruta: string | null;
   fecha_entrega: string | null;
@@ -50,6 +64,7 @@ export type Pedido = PedidoListItem & {
   observaciones: string | null;
   surtido: number | null;
   rollo: number | null;
+  direccion?: PedidoDireccion | null;
   detalle: PedidoDetalleLinea[];
 };
 
@@ -63,14 +78,27 @@ export type PedidoDetailResponse = {
 export type PedidoCreatePayload = {
   pedido: {
     no_cliente: string;
+    no_pedido?: string;
     cliente_razon_social: string;
     cliente_telefono?: string;
     cliente_correo?: string;
     cliente_rfc?: string;
+    uso_cfdi?: string;
+    cliente_condiciones?: string;
     tipo_fac_rem: number;
     fecha_entrega: string;
     observaciones?: string;
     vendedor?: string;
+  };
+  direccion?: {
+    direccion: string;
+    num_ext?: string;
+    num_int?: string;
+    referencia?: string;
+    codigo_postal?: string;
+    estado_id?: number;
+    municipio_id?: number;
+    codigo_postal_id?: number;
   };
   detalle: Array<{
     codigo: string;
@@ -90,6 +118,10 @@ export type PedidoCreateResponse = {
 export type PedidoTransitionResponse = {
   ok: boolean;
   message: string;
+  transition?: {
+    from?: { code: number; label: string };
+    to?: { code: number; label: string };
+  };
   item: Pedido;
 };
 
