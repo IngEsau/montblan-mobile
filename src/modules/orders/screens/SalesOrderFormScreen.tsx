@@ -13,7 +13,7 @@ import {
 import { ApiError } from '../../../shared/api/http';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
-import { formatMoney, getTodayYmd } from '../../../shared/utils/formatters';
+import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { catalogApi } from '../../catalog/services/catalogApi';
 import { Cliente, Producto } from '../../catalog/types';
@@ -41,7 +41,6 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
   const [productoModalOpen, setProductoModalOpen] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [noPedido, setNoPedido] = useState('');
-  const [fechaEntrega, setFechaEntrega] = useState(getTodayYmd());
   const [clienteCondiciones, setClienteCondiciones] = useState('');
   const [clienteCorreo, setClienteCorreo] = useState('');
   const [clienteRfc, setClienteRfc] = useState('');
@@ -169,10 +168,6 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
       return 'Debes capturar el número de pedido.';
     }
 
-    if (!fechaEntrega || fechaEntrega < getTodayYmd()) {
-      return 'La fecha de entrega no puede ser menor a hoy.';
-    }
-
     if (!direccion.trim()) {
       return 'Debes capturar la dirección del pedido.';
     }
@@ -225,7 +220,6 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
           uso_cfdi: usoCfdi.trim() || undefined,
           cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
-          fecha_entrega: fechaEntrega,
           observaciones,
           vendedor: user?.username || 'movil',
         },
@@ -309,15 +303,6 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
           <Text style={[styles.toggleLabel, tipoComprobante === 20 && styles.toggleLabelActive]}>Recibo simple</Text>
         </Pressable>
       </View>
-
-      <Text style={styles.label}>Fecha de entrega (YYYY-MM-DD)</Text>
-      <TextInput
-        value={fechaEntrega}
-        onChangeText={setFechaEntrega}
-        placeholder="2026-03-30"
-        style={styles.input}
-        autoCapitalize="none"
-      />
 
       <Text style={styles.label}>Condiciones</Text>
       <TextInput

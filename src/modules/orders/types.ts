@@ -86,7 +86,7 @@ export type PedidoCreatePayload = {
     uso_cfdi?: string;
     cliente_condiciones?: string;
     tipo_fac_rem: number;
-    fecha_entrega: string;
+    fecha_entrega?: string;
     observaciones?: string;
     vendedor?: string;
   };
