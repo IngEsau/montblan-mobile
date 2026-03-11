@@ -10,6 +10,8 @@ import { OrderDetailScreen } from '../modules/orders/screens/OrderDetailScreen';
 import { SalesOrderFormScreen } from '../modules/orders/screens/SalesOrderFormScreen';
 import { WarehouseOrderFormScreen } from '../modules/orders/screens/WarehouseOrderFormScreen';
 import { WarehouseDeliveryScreen } from '../modules/orders/screens/WarehouseDeliveryScreen';
+import { ProductsCatalogScreen } from '../modules/catalog/screens/ProductsCatalogScreen';
+import { ClientsCatalogScreen } from '../modules/catalog/screens/ClientsCatalogScreen';
 import { AppTabParamList, RootStackParamList } from './types';
 import { palette } from '../shared/theme/palette';
 import { typography } from '../shared/theme/typography';
@@ -28,6 +30,15 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
   const isAdmin = role.includes('THECREATOR') || role.includes('ADMIN') || role.includes('SUPER');
   const canSales = !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
   const canWarehouse = !hasRole || isAdmin || role.includes('ALMACEN');
+  const availableModes: Array<'sales' | 'warehouse'> = [];
+
+  if (canSales) {
+    availableModes.push('sales');
+  }
+
+  if (canWarehouse) {
+    availableModes.push('warehouse');
+  }
 
   return (
     <Tab.Navigator
@@ -53,7 +64,13 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
         },
         tabBarIcon: ({ color, size }) => (
           <Ionicons
-            name={route.name === 'Ventas' ? 'receipt-outline' : 'cube-outline'}
+            name={
+              route.name === 'Pedidos'
+                ? 'receipt-outline'
+                : route.name === 'Productos'
+                  ? 'cube-outline'
+                  : 'people-outline'
+            }
             color={color}
             size={size}
           />
@@ -65,38 +82,24 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
         ),
       })}
     >
-      {canSales ? (
-        <Tab.Screen name="Ventas" options={{ title: 'Ventas' }}>
-          {() => (
-            <OrdersListScreen
-              mode="sales"
-              onOpenDetail={(orderId) =>
-                rootNavigation.navigate('PedidoDetalle', {
-                  orderId,
-                  mode: 'sales',
-                })
-              }
-              onCreateSalesOrder={() => rootNavigation.navigate('NuevoPedidoVenta')}
-            />
-          )}
-        </Tab.Screen>
-      ) : null}
+      <Tab.Screen name="Pedidos" options={{ title: 'Pedidos' }}>
+        {() => (
+          <OrdersListScreen
+            availableModes={availableModes}
+            onOpenDetail={(orderId, mode) =>
+              rootNavigation.navigate('PedidoDetalle', {
+                orderId,
+                mode,
+              })
+            }
+            onCreateSalesOrder={canSales ? () => rootNavigation.navigate('NuevoPedidoVenta') : undefined}
+          />
+        )}
+      </Tab.Screen>
 
-      {canWarehouse ? (
-        <Tab.Screen name="Almacen" options={{ title: 'Almacén' }}>
-          {() => (
-            <OrdersListScreen
-              mode="warehouse"
-              onOpenDetail={(orderId) =>
-                rootNavigation.navigate('PedidoDetalle', {
-                  orderId,
-                  mode: 'warehouse',
-                })
-              }
-            />
-          )}
-        </Tab.Screen>
-      ) : null}
+      <Tab.Screen name="Productos" component={ProductsCatalogScreen} options={{ title: 'Productos' }} />
+
+      <Tab.Screen name="Clientes" component={ClientsCatalogScreen} options={{ title: 'Clientes' }} />
     </Tab.Navigator>
   );
 }

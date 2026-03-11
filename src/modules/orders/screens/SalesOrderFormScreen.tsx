@@ -66,8 +66,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     setLoadingCatalogs(true);
     try {
       const [clientesResponse, productosResponse, pedidoResponse] = await Promise.all([
-        catalogApi.listClientes(token),
-        catalogApi.listProductos(token),
+        catalogApi.listClientesAll(token),
+        catalogApi.listProductosAll(token, '', {
+          includeOutOfLine: false,
+          onlyWithName: true,
+          onlyWithPrice: true,
+          perPage: 100,
+        }),
         isEditMode && orderId ? ordersApi.detail(token, orderId) : Promise.resolve(null),
       ]);
 

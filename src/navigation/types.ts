@@ -1,6 +1,7 @@
 export type AppTabParamList = {
-  Ventas: undefined;
-  Almacen: undefined;
+  Pedidos: undefined;
+  Productos: undefined;
+  Clientes: undefined;
 };
 
 export type RootStackParamList = {

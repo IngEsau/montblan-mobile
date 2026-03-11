@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,8 +20,8 @@ import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
 
 type OrdersListScreenProps = {
-  mode: 'sales' | 'warehouse';
-  onOpenDetail: (orderId: number) => void;
+  availableModes: Array<'sales' | 'warehouse'>;
+  onOpenDetail: (orderId: number, mode: 'sales' | 'warehouse') => void;
   onCreateSalesOrder?: () => void;
 };
 
@@ -29,14 +29,29 @@ const SALES_STATUS = 10;
 const WAREHOUSE_VALIDATION_STATUS = 30;
 const WAREHOUSE_DELIVERY_STATUS = 45;
 
-export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: OrdersListScreenProps) {
+export function OrdersListScreen({
+  availableModes,
+  onOpenDetail,
+  onCreateSalesOrder,
+}: OrdersListScreenProps) {
   const { token } = useAuth();
+  const resolvedModes = useMemo<Array<'sales' | 'warehouse'>>(
+    () => (availableModes.length > 0 ? availableModes : ['sales']),
+    [availableModes],
+  );
+  const [mode, setMode] = useState<'sales' | 'warehouse'>(resolvedModes[0]);
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
   const [warehouseStage, setWarehouseStage] = useState<'validation' | 'delivery'>('validation');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!resolvedModes.includes(mode)) {
+      setMode(resolvedModes[0]);
+    }
+  }, [mode, resolvedModes]);
 
   const statusFilter =
     mode === 'sales'
@@ -96,9 +111,32 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
 
   return (
     <View style={styles.container}>
+      {resolvedModes.length > 1 ? (
+        <View style={styles.modeRow}>
+          <Pressable
+            style={[styles.modeButton, mode === 'sales' && styles.modeButtonActive]}
+            onPress={() => setMode('sales')}
+          >
+            <Text style={[styles.modeButtonLabel, mode === 'sales' && styles.modeButtonLabelActive]}>
+              Ventas
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.modeButton, mode === 'warehouse' && styles.modeButtonActive]}
+            onPress={() => setMode('warehouse')}
+          >
+            <Text
+              style={[styles.modeButtonLabel, mode === 'warehouse' && styles.modeButtonLabelActive]}
+            >
+              Almacén
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
-        {mode === 'sales' ? (
+        {mode === 'sales' && onCreateSalesOrder ? (
           <Pressable onPress={onCreateSalesOrder} style={styles.createButton}>
             <Text style={styles.createButtonLabel}>+ Nuevo pedido</Text>
           </Pressable>
@@ -169,7 +207,9 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
             />
           }
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => <OrderCard order={item} onPress={() => onOpenDetail(item.id)} />}
+          renderItem={({ item }) => (
+            <OrderCard order={item} onPress={() => onOpenDetail(item.id, mode)} />
+          )}
           ListEmptyComponent={
             <EmptyState
               title="No hay pedidos en esta fase"
@@ -193,6 +233,33 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 14,
     paddingTop: 12,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  modeButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  modeButtonActive: {
+    backgroundColor: palette.navy,
+    borderColor: palette.navy,
+  },
+  modeButtonLabel: {
+    color: palette.navy,
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  modeButtonLabelActive: {
+    color: '#fff',
+    fontFamily: typography.semiBold,
   },
   header: {
     flexDirection: 'row',
