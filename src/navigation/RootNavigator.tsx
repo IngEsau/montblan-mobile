@@ -128,6 +128,7 @@ function AppNavigator() {
             mode={route.params.mode}
             onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
             onOpenWarehouseDelivery={(orderId) => navigation.navigate('CapturaEntregaAlmacen', { orderId })}
+            onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
           />
         )}
       />
@@ -136,6 +137,21 @@ function AppNavigator() {
         options={{ title: 'Alta de pedido (Ventas)' }}
         children={({ navigation }) => (
           <SalesOrderFormScreen
+            onCreated={(orderId) => {
+              navigation.replace('PedidoDetalle', {
+                orderId,
+                mode: 'sales',
+              });
+            }}
+          />
+        )}
+      />
+      <RootStack.Screen
+        name="EditarPedidoVenta"
+        options={{ title: 'Editar pedido (Captura)' }}
+        children={({ route, navigation }) => (
+          <SalesOrderFormScreen
+            orderId={route.params.orderId}
             onCreated={(orderId) => {
               navigation.replace('PedidoDetalle', {
                 orderId,

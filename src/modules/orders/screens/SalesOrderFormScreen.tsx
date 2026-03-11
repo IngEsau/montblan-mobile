@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,10 +30,12 @@ type DraftLine = {
 
 type SalesOrderFormScreenProps = {
   onCreated: (orderId: number) => void;
+  orderId?: number;
 };
 
-export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
+export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScreenProps) {
   const { token, user } = useAuth();
+  const isEditMode = typeof orderId === 'number';
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
@@ -56,50 +58,89 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadCatalogs() {
-      if (!token) {
-        return;
-      }
-
-      setLoadingCatalogs(true);
-      try {
-        const [clientesResponse, productosResponse] = await Promise.all([
-          catalogApi.listClientes(token),
-          catalogApi.listProductos(token),
-        ]);
-
-        if (!mounted) {
-          return;
-        }
-
-        setClientes(clientesResponse.items);
-        setProductos(productosResponse.items);
-      } catch (error) {
-        if (!mounted) {
-          return;
-        }
-
-        if (error instanceof ApiError) {
-          setErrorMessage(error.message);
-        } else {
-          setErrorMessage('No fue posible cargar catálogos de cliente y producto.');
-        }
-      } finally {
-        if (mounted) {
-          setLoadingCatalogs(false);
-        }
-      }
+  const loadFormData = useCallback(async () => {
+    if (!token) {
+      return;
     }
 
-    loadCatalogs();
+    setLoadingCatalogs(true);
+    try {
+      const [clientesResponse, productosResponse, pedidoResponse] = await Promise.all([
+        catalogApi.listClientes(token),
+        catalogApi.listProductos(token),
+        isEditMode && orderId ? ordersApi.detail(token, orderId) : Promise.resolve(null),
+      ]);
 
-    return () => {
-      mounted = false;
-    };
-  }, [token]);
+      setClientes(clientesResponse.items);
+      setProductos(productosResponse.items);
+
+      if (pedidoResponse?.item) {
+        const item = pedidoResponse.item;
+
+        setNoPedido(item.no_pedido || '');
+        setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
+        setClienteCondiciones(item.cliente_condiciones || '');
+        setClienteCorreo(item.cliente_correo || '');
+        setClienteRfc(item.cliente_rfc || '');
+        setUsoCfdi(item.uso_cfdi || '');
+        setObservaciones(item.observaciones || '');
+        setCodigoPostal(item.direccion?.codigo_postal || '');
+        setDireccion(item.direccion?.direccion || '');
+        setNumInt(item.direccion?.num_ext || '');
+        setNumExt(item.direccion?.num_int || '');
+        setReferenciaDireccion(item.direccion?.referencia || '');
+
+        const selectedFromCatalog = clientesResponse.items.find((cliente) => cliente.clave === item.no_cliente);
+        if (selectedFromCatalog) {
+          setSelectedCliente(selectedFromCatalog);
+          if (!item.direccion?.direccion) {
+            setDireccion((selectedFromCatalog.calle || '').trim());
+          }
+        } else {
+          setSelectedCliente({
+            id: -item.id,
+            clave: item.no_cliente || '',
+            nombre: item.cliente_razon_social || 'Cliente',
+            nombre_comercial: item.cliente_razon_social || null,
+            calle: item.direccion?.direccion || null,
+            telefono: item.cliente_telefono || null,
+            saldo: 0,
+          });
+        }
+
+        const nowSeed = Date.now();
+        setLines(
+          item.detalle.map((line, index) => {
+            const code = line.codigo || '';
+            const catalogProduct = productosResponse.items.find((producto) => producto.codigo === code);
+            const lineName = catalogProduct?.nombre || line.descripcion || code || 'Producto';
+            return {
+              id: `edit-${line.id}-${nowSeed}-${index}`,
+              codigo: code,
+              nombre: lineName,
+              precio: Number(line.precio || 0),
+              cantidad: String(line.cantidad || 0),
+              descripcion: line.descripcion || lineName,
+            };
+          }),
+        );
+      }
+
+      setErrorMessage(null);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage('No fue posible cargar catálogos de cliente y producto.');
+      }
+    } finally {
+      setLoadingCatalogs(false);
+    }
+  }, [isEditMode, orderId, token]);
+
+  useEffect(() => {
+    loadFormData();
+  }, [loadFormData]);
 
   const totals = useMemo(() => {
     const subtotal = lines.reduce((acc, line) => {
@@ -244,8 +285,14 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
         }),
       };
 
-      const response = await ordersApi.create(token, payload);
-      Alert.alert('Pedido creado', response.message || 'Pedido guardado correctamente.');
+      const response =
+        isEditMode && orderId
+          ? await ordersApi.update(token, orderId, payload)
+          : await ordersApi.create(token, payload);
+      Alert.alert(
+        isEditMode ? 'Pedido actualizado' : 'Pedido creado',
+        response.message || (isEditMode ? 'Pedido actualizado correctamente.' : 'Pedido guardado correctamente.'),
+      );
       onCreated(response.item.id);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -266,9 +313,9 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
     );
   }
 
-  return (
+    return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Nuevo pedido de venta</Text>
+      <Text style={styles.title}>{isEditMode ? 'Editar pedido de venta' : 'Nuevo pedido de venta'}</Text>
 
       <Text style={styles.label}>Cliente</Text>
       <Pressable style={styles.selector} onPress={() => setClienteModalOpen(true)}>
@@ -453,7 +500,9 @@ export function SalesOrderFormScreen({ onCreated }: SalesOrderFormScreenProps) {
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
       <Pressable style={styles.submitButton} onPress={submit} disabled={isSubmitting}>
-        <Text style={styles.submitLabel}>{isSubmitting ? 'Guardando...' : 'Crear pedido'}</Text>
+        <Text style={styles.submitLabel}>
+          {isSubmitting ? 'Guardando...' : isEditMode ? 'Guardar cambios' : 'Crear pedido'}
+        </Text>
       </Pressable>
 
       <Modal visible={clienteModalOpen} animationType="slide">

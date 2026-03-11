@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { OrderCard } from '../components/OrderCard';
 import { ordersApi } from '../services/ordersApi';
 import { PedidoListItem } from '../types';
@@ -55,7 +56,7 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
   );
 
   const fetchOrders = useCallback(
-    async (refreshing = false) => {
+    async (refreshing = false, searchText = '') => {
       if (!token) {
         return;
       }
@@ -68,7 +69,7 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
 
       try {
         const response = await ordersApi.list(token, {
-          search: search.trim(),
+          search: searchText,
           status: statusFilter,
         });
         setOrders(response.items);
@@ -84,12 +85,14 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
         setIsRefreshing(false);
       }
     },
-    [search, statusFilter, token],
+    [statusFilter, token],
   );
 
-  useEffect(() => {
-    fetchOrders(false);
-  }, [fetchOrders]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders(false, '');
+    }, [fetchOrders]),
+  );
 
   return (
     <View style={styles.container}>
@@ -141,9 +144,9 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
           placeholderTextColor="#8fa0af"
           style={styles.searchInput}
           returnKeyType="search"
-          onSubmitEditing={() => fetchOrders(false)}
+          onSubmitEditing={() => fetchOrders(false, search.trim())}
         />
-        <Pressable style={styles.searchButton} onPress={() => fetchOrders(false)}>
+        <Pressable style={styles.searchButton} onPress={() => fetchOrders(false, search.trim())}>
           <Text style={styles.searchButtonLabel}>Buscar</Text>
         </Pressable>
       </View>
@@ -161,7 +164,7 @@ export function OrdersListScreen({ mode, onOpenDetail, onCreateSalesOrder }: Ord
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => fetchOrders(true)}
+              onRefresh={() => fetchOrders(true, search.trim())}
               tintColor={palette.primary}
             />
           }

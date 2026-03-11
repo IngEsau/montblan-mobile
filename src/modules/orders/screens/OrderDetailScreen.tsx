@@ -23,6 +23,7 @@ type OrderDetailScreenProps = {
   mode: 'sales' | 'warehouse';
   onOpenWarehouseCapture: (orderId: number) => void;
   onOpenWarehouseDelivery: (orderId: number) => void;
+  onEditCaptureOrder: (orderId: number) => void;
 };
 
 export function OrderDetailScreen({
@@ -30,6 +31,7 @@ export function OrderDetailScreen({
   mode,
   onOpenWarehouseCapture,
   onOpenWarehouseDelivery,
+  onEditCaptureOrder,
 }: OrderDetailScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
@@ -167,6 +169,15 @@ export function OrderDetailScreen({
           ))
         )}
       </View>
+
+      {canSendToWarehouse ? (
+        <Pressable
+          style={[styles.actionButton, styles.actionButtonEdit]}
+          onPress={() => onEditCaptureOrder(order.id)}
+        >
+          <Text style={styles.actionLabel}>Editar pedido</Text>
+        </Pressable>
+      ) : null}
 
       {canSendToWarehouse ? (
         <Pressable style={styles.actionButton} onPress={sendToWarehouse} disabled={isSending}>
@@ -327,6 +338,9 @@ const styles = StyleSheet.create({
   },
   actionButtonWarehouse: {
     backgroundColor: palette.navy,
+  },
+  actionButtonEdit: {
+    backgroundColor: '#49738e',
   },
   actionButtonDelivery: {
     backgroundColor: '#4a6da7',

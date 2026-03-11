@@ -56,6 +56,13 @@ export const ordersApi = {
       body: payload,
     }),
 
+  update: (token: string, orderId: number, payload: PedidoCreatePayload) =>
+    apiRequest<PedidoCreateResponse>(`/pedidos/${orderId}`, {
+      token,
+      method: 'PATCH',
+      body: payload,
+    }),
+
   transition: (
     token: string,
     orderId: number,
