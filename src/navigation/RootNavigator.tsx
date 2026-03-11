@@ -35,11 +35,24 @@ function normalizeRole(role: string | null | undefined) {
 function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
   const { logout, user } = useAuth();
   const role = normalizeRole(user?.rol);
+  const permissionFlags = user?.permissions;
+  const hasPermissionFlags =
+    permissionFlags &&
+    typeof permissionFlags.can_sales === 'boolean' &&
+    typeof permissionFlags.can_warehouse === 'boolean' &&
+    typeof permissionFlags.can_cxc === 'boolean';
+
   const hasRole = role.trim().length > 0;
   const isAdmin = role.includes('THECREATOR') || role.includes('ADMIN') || role.includes('SUPER');
-  const canSales = !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
-  const canWarehouse = !hasRole || isAdmin || role.includes('ALMACEN');
-  const canCxc = isAdmin || role.includes('CTAS') || role.includes('COBRAR') || role.includes('CXC');
+  const canSales = hasPermissionFlags
+    ? Boolean(permissionFlags.can_sales)
+    : !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
+  const canWarehouse = hasPermissionFlags
+    ? Boolean(permissionFlags.can_warehouse)
+    : !hasRole || isAdmin || role.includes('ALMACEN');
+  const canCxc = hasPermissionFlags
+    ? Boolean(permissionFlags.can_cxc)
+    : isAdmin || role.includes('CTAS') || role.includes('COBRAR') || role.includes('CXC');
   const availableModes: OrderMode[] = [];
 
   if (canSales) {

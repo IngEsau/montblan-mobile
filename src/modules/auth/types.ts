@@ -7,6 +7,11 @@ export type AuthUser = {
   status: number;
   api_enabled: number;
   rol: string | null;
+  permissions?: {
+    can_sales: boolean;
+    can_warehouse: boolean;
+    can_cxc: boolean;
+  };
 };
 
 export type LoginResponse = {

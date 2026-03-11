@@ -30,6 +30,7 @@ const SALES_STATUS = 10;
 const CXC_STATUS = 20;
 const WAREHOUSE_VALIDATION_STATUS = 30;
 const WAREHOUSE_DELIVERY_STATUS = 45;
+const FINISHED_STATUS = 50;
 
 export function OrdersListScreen({
   availableModes,
@@ -44,7 +45,7 @@ export function OrdersListScreen({
   const [mode, setMode] = useState<OrderMode>(resolvedModes[0]);
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
-  const [warehouseStage, setWarehouseStage] = useState<'validation' | 'delivery'>('validation');
+  const [warehouseStage, setWarehouseStage] = useState<'validation' | 'delivery' | 'finished'>('validation');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -62,6 +63,8 @@ export function OrdersListScreen({
         ? CXC_STATUS
       : warehouseStage === 'validation'
         ? WAREHOUSE_VALIDATION_STATUS
+        : warehouseStage === 'finished'
+          ? FINISHED_STATUS
         : WAREHOUSE_DELIVERY_STATUS;
 
   const title = useMemo(
@@ -72,6 +75,8 @@ export function OrdersListScreen({
           ? 'Pedidos - Ctas x Cobrar'
         : warehouseStage === 'validation'
           ? 'Almacén: Validación'
+          : warehouseStage === 'finished'
+            ? 'Pedidos terminados'
           : 'Almacén: Ruta y entrega',
     [mode, warehouseStage],
   );
@@ -179,6 +184,19 @@ export function OrdersListScreen({
               Ruta / Entrega
             </Text>
           </Pressable>
+          <Pressable
+            style={[styles.stageButton, warehouseStage === 'finished' && styles.stageButtonActive]}
+            onPress={() => setWarehouseStage('finished')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                warehouseStage === 'finished' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Terminado
+            </Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -226,6 +244,8 @@ export function OrdersListScreen({
                   ? 'Ajusta la búsqueda o crea un pedido nuevo desde Ventas.'
                   : mode === 'cxc'
                     ? 'No hay pedidos pendientes en Ctas x Cobrar.'
+                  : warehouseStage === 'finished'
+                    ? 'No hay pedidos en fase Terminado.'
                   : warehouseStage === 'validation'
                     ? 'No hay pedidos pendientes de validación de almacén.'
                     : 'No hay pedidos en almacén final para ruta/entrega.'

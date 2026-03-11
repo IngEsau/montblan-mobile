@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../shared/api/http';
-import { Cliente, PaginatedResponse, Producto } from '../types';
+import { Cliente, CodigoPostalLookupResponse, PaginatedResponse, Producto } from '../types';
 
 type BaseCatalogOptions = {
   page?: number;
@@ -87,4 +87,9 @@ export const catalogApi = {
         page,
       }),
     ),
+
+  lookupCodigoPostal: (token: string, codigoPostal: string) =>
+    apiRequest<CodigoPostalLookupResponse>(`/direcciones/codigo-postal/${encodeURIComponent(codigoPostal)}`, {
+      token,
+    }),
 };

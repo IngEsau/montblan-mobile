@@ -26,3 +26,32 @@ export type Producto = {
   inventario_sa: number | null;
   inventario_cmb: number | null;
 };
+
+export type CodigoPostalEstado = {
+  id: number;
+  nombre: string;
+};
+
+export type CodigoPostalMunicipio = {
+  id: number;
+  estado_id: number;
+  nombre: string;
+};
+
+export type CodigoPostalColonia = {
+  id: number;
+  codigo_postal: string;
+  estado_id: number;
+  estado: string;
+  municipio_id: number;
+  municipio: string;
+  nombre: string;
+};
+
+export type CodigoPostalLookupResponse = {
+  ok: boolean;
+  codigo_postal: string;
+  estados: CodigoPostalEstado[];
+  municipios: CodigoPostalMunicipio[];
+  colonias: CodigoPostalColonia[];
+};

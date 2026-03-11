@@ -16,7 +16,7 @@ import { typography } from '../../../shared/theme/typography';
 import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { catalogApi } from '../../catalog/services/catalogApi';
-import { Cliente, Producto } from '../../catalog/types';
+import { Cliente, CodigoPostalColonia, Producto } from '../../catalog/types';
 import { ordersApi } from '../services/ordersApi';
 
 type DraftLine = {
@@ -41,6 +41,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [clienteModalOpen, setClienteModalOpen] = useState(false);
   const [productoModalOpen, setProductoModalOpen] = useState(false);
+  const [clienteSearch, setClienteSearch] = useState('');
+  const [productoSearch, setProductoSearch] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [noPedido, setNoPedido] = useState('');
   const [clienteCondiciones, setClienteCondiciones] = useState('');
@@ -48,6 +50,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [clienteRfc, setClienteRfc] = useState('');
   const [usoCfdi, setUsoCfdi] = useState('');
   const [codigoPostal, setCodigoPostal] = useState('');
+  const [estadoModalOpen, setEstadoModalOpen] = useState(false);
+  const [municipioModalOpen, setMunicipioModalOpen] = useState(false);
+  const [coloniaModalOpen, setColoniaModalOpen] = useState(false);
+  const [codigoPostalRows, setCodigoPostalRows] = useState<CodigoPostalColonia[]>([]);
+  const [estadoId, setEstadoId] = useState<number | null>(null);
+  const [municipioId, setMunicipioId] = useState<number | null>(null);
+  const [coloniaId, setColoniaId] = useState<number | null>(null);
   const [direccion, setDireccion] = useState('');
   const [numInt, setNumInt] = useState('');
   const [numExt, setNumExt] = useState('');
@@ -55,6 +64,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [observaciones, setObservaciones] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
+  const [isLookingUpPostalCode, setIsLookingUpPostalCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -91,9 +101,21 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setObservaciones(item.observaciones || '');
         setCodigoPostal(item.direccion?.codigo_postal || '');
         setDireccion(item.direccion?.direccion || '');
-        setNumInt(item.direccion?.num_ext || '');
-        setNumExt(item.direccion?.num_int || '');
+        setNumInt(item.direccion?.num_int || '');
+        setNumExt(item.direccion?.num_ext || '');
         setReferenciaDireccion(item.direccion?.referencia || '');
+        setEstadoId(item.direccion?.estado_id || null);
+        setMunicipioId(item.direccion?.municipio_id || null);
+        setColoniaId(item.direccion?.codigo_postal_id || null);
+
+        const cpFromPedido = (item.direccion?.codigo_postal || '').trim();
+        if (/^\d{4,6}$/.test(cpFromPedido)) {
+          const cpResponse = await catalogApi.lookupCodigoPostal(token, cpFromPedido);
+          const rows = cpResponse.colonias || [];
+          setCodigoPostalRows(rows);
+        } else {
+          setCodigoPostalRows([]);
+        }
 
         const selectedFromCatalog = clientesResponse.items.find((cliente) => cliente.clave === item.no_cliente);
         if (selectedFromCatalog) {
@@ -147,6 +169,138 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     loadFormData();
   }, [loadFormData]);
 
+  const estadosDisponibles = useMemo(() => {
+    const map = new Map<number, { id: number; nombre: string }>();
+    codigoPostalRows.forEach((row) => {
+      if (!map.has(row.estado_id)) {
+        map.set(row.estado_id, { id: row.estado_id, nombre: row.estado });
+      }
+    });
+    return Array.from(map.values());
+  }, [codigoPostalRows]);
+
+  const municipiosDisponibles = useMemo(() => {
+    const map = new Map<number, { id: number; estado_id: number; nombre: string }>();
+    codigoPostalRows.forEach((row) => {
+      if (estadoId !== null && row.estado_id !== estadoId) {
+        return;
+      }
+
+      if (!map.has(row.municipio_id)) {
+        map.set(row.municipio_id, {
+          id: row.municipio_id,
+          estado_id: row.estado_id,
+          nombre: row.municipio,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [codigoPostalRows, estadoId]);
+
+  const coloniasDisponibles = useMemo(
+    () =>
+      codigoPostalRows.filter(
+        (row) =>
+          (estadoId === null || row.estado_id === estadoId) &&
+          (municipioId === null || row.municipio_id === municipioId),
+      ),
+    [codigoPostalRows, estadoId, municipioId],
+  );
+
+  const estadoSeleccionado = useMemo(
+    () => estadosDisponibles.find((item) => item.id === estadoId) || null,
+    [estadosDisponibles, estadoId],
+  );
+
+  const municipioSeleccionado = useMemo(
+    () => municipiosDisponibles.find((item) => item.id === municipioId) || null,
+    [municipiosDisponibles, municipioId],
+  );
+
+  const coloniaSeleccionada = useMemo(
+    () => coloniasDisponibles.find((item) => item.id === coloniaId) || null,
+    [coloniasDisponibles, coloniaId],
+  );
+
+  const lookupCodigoPostal = useCallback(
+    async (codigo: string, preferred?: { estadoId?: number | null; municipioId?: number | null; coloniaId?: number | null }) => {
+      if (!token) {
+        return;
+      }
+
+      const normalized = codigo.trim();
+      if (!/^\d{4,6}$/.test(normalized)) {
+        setCodigoPostalRows([]);
+        setEstadoId(null);
+        setMunicipioId(null);
+        setColoniaId(null);
+        return;
+      }
+
+      setIsLookingUpPostalCode(true);
+      try {
+        const response = await catalogApi.lookupCodigoPostal(token, normalized);
+        const rows = response.colonias || [];
+        setCodigoPostalRows(rows);
+
+        if (rows.length === 0) {
+          setEstadoId(null);
+          setMunicipioId(null);
+          setColoniaId(null);
+          return;
+        }
+
+        const fallback = rows[0];
+        const preferredEstadoId = preferred?.estadoId ?? null;
+        const preferredMunicipioId = preferred?.municipioId ?? null;
+        const preferredColoniaId = preferred?.coloniaId ?? null;
+
+        const selectedEstado =
+          preferredEstadoId !== null && rows.some((item) => item.estado_id === preferredEstadoId)
+            ? preferredEstadoId
+            : fallback.estado_id;
+
+        const selectedMunicipio =
+          preferredMunicipioId !== null &&
+          rows.some((item) => item.estado_id === selectedEstado && item.municipio_id === preferredMunicipioId)
+            ? preferredMunicipioId
+            : rows.find((item) => item.estado_id === selectedEstado)?.municipio_id ?? fallback.municipio_id;
+
+        const selectedColonia =
+          preferredColoniaId !== null &&
+          rows.some(
+            (item) =>
+              item.estado_id === selectedEstado &&
+              item.municipio_id === selectedMunicipio &&
+              item.id === preferredColoniaId,
+          )
+            ? preferredColoniaId
+            : rows.find(
+                (item) =>
+                  item.estado_id === selectedEstado &&
+                  item.municipio_id === selectedMunicipio,
+              )?.id ?? fallback.id;
+
+        setEstadoId(selectedEstado);
+        setMunicipioId(selectedMunicipio);
+        setColoniaId(selectedColonia);
+      } catch (error) {
+        setCodigoPostalRows([]);
+        setEstadoId(null);
+        setMunicipioId(null);
+        setColoniaId(null);
+        if (error instanceof ApiError) {
+          setErrorMessage(error.message);
+        } else {
+          setErrorMessage('No fue posible obtener datos del código postal.');
+        }
+      } finally {
+        setIsLookingUpPostalCode(false);
+      }
+    },
+    [token],
+  );
+
   const totals = useMemo(() => {
     const subtotal = lines.reduce((acc, line) => {
       const qty = Number(line.cantidad);
@@ -164,6 +318,32 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       total: subtotal + iva,
     };
   }, [lines, tipoComprobante]);
+
+  const clientesFiltrados = useMemo(() => {
+    const needle = clienteSearch.trim().toLowerCase();
+    if (!needle) {
+      return clientes;
+    }
+
+    return clientes.filter((cliente) => {
+      const nombre = (cliente.nombre_comercial || cliente.nombre || '').toLowerCase();
+      const clave = (cliente.clave || '').toLowerCase();
+      return clave.includes(needle) || nombre.includes(needle);
+    });
+  }, [clienteSearch, clientes]);
+
+  const productosFiltrados = useMemo(() => {
+    const needle = productoSearch.trim().toLowerCase();
+    if (!needle) {
+      return productos;
+    }
+
+    return productos.filter((producto) => {
+      const codigo = (producto.codigo || '').toLowerCase();
+      const nombre = (producto.nombre || '').toLowerCase();
+      return codigo.includes(needle) || nombre.includes(needle);
+    });
+  }, [productoSearch, productos]);
 
   const addProduct = (producto: Producto) => {
     const line: DraftLine = {
@@ -203,6 +383,48 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
   const removeLine = (lineId: string) => {
     setLines((prev) => prev.filter((line) => line.id !== lineId));
+  };
+
+  const handleCodigoPostalChange = (value: string) => {
+    const normalized = value.replace(/\D/g, '').slice(0, 6);
+    setCodigoPostal(normalized);
+    if (normalized.length < 4) {
+      setCodigoPostalRows([]);
+      setEstadoId(null);
+      setMunicipioId(null);
+      setColoniaId(null);
+    }
+  };
+
+  const handleCodigoPostalBlur = () => {
+    lookupCodigoPostal(codigoPostal, {
+      estadoId,
+      municipioId,
+      coloniaId,
+    });
+  };
+
+  const selectEstado = (id: number) => {
+    setEstadoId(id);
+    const municipioFallback = codigoPostalRows.find((item) => item.estado_id === id)?.municipio_id ?? null;
+    setMunicipioId(municipioFallback);
+    const coloniaFallback =
+      codigoPostalRows.find((item) => item.estado_id === id && item.municipio_id === municipioFallback)?.id ?? null;
+    setColoniaId(coloniaFallback);
+    setEstadoModalOpen(false);
+  };
+
+  const selectMunicipio = (id: number) => {
+    setMunicipioId(id);
+    const coloniaFallback =
+      codigoPostalRows.find((item) => item.estado_id === estadoId && item.municipio_id === id)?.id ?? null;
+    setColoniaId(coloniaFallback);
+    setMunicipioModalOpen(false);
+  };
+
+  const selectColonia = (id: number) => {
+    setColoniaId(id);
+    setColoniaModalOpen(false);
   };
 
   const validateForm = () => {
@@ -271,10 +493,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         },
         direccion: {
           direccion: direccion.trim(),
-          num_ext: numInt.trim() || undefined,
-          num_int: numExt.trim() || undefined,
+          num_ext: numExt.trim() || undefined,
+          num_int: numInt.trim() || undefined,
           referencia: referenciaDireccion.trim() || undefined,
           codigo_postal: codigoPostal.trim() || undefined,
+          estado_id: estadoId || undefined,
+          municipio_id: municipioId || undefined,
+          codigo_postal_id: coloniaId || undefined,
         },
         detalle: lines.map((line) => {
           const qty = Number(line.cantidad);
@@ -323,7 +548,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       <Text style={styles.title}>{isEditMode ? 'Editar pedido de venta' : 'Nuevo pedido de venta'}</Text>
 
       <Text style={styles.label}>Cliente</Text>
-      <Pressable style={styles.selector} onPress={() => setClienteModalOpen(true)}>
+      <Pressable
+        style={styles.selector}
+        onPress={() => {
+          setClienteSearch('');
+          setClienteModalOpen(true);
+        }}
+      >
         <Text style={styles.selectorValue}>
           {selectedCliente
             ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
@@ -394,11 +625,51 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       <Text style={styles.label}>C.P. (opcional)</Text>
       <TextInput
         value={codigoPostal}
-        onChangeText={setCodigoPostal}
+        onChangeText={handleCodigoPostalChange}
+        onBlur={handleCodigoPostalBlur}
         placeholder="Ej. 77500"
         style={styles.input}
         keyboardType="number-pad"
       />
+      {isLookingUpPostalCode ? <Text style={styles.helper}>Buscando datos de C.P...</Text> : null}
+
+      <View style={styles.lineRow}>
+        <View style={styles.lineInputWrap}>
+          <Text style={styles.label}>Estado</Text>
+          <Pressable
+            style={styles.selector}
+            onPress={() => setEstadoModalOpen(true)}
+            disabled={estadosDisponibles.length === 0}
+          >
+            <Text style={styles.selectorValue}>
+              {estadoSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar estado' : 'Sin datos por C.P.')}
+            </Text>
+          </Pressable>
+        </View>
+        <View style={styles.lineInputWrap}>
+          <Text style={styles.label}>Deleg./Mpio.</Text>
+          <Pressable
+            style={styles.selector}
+            onPress={() => setMunicipioModalOpen(true)}
+            disabled={municipiosDisponibles.length === 0}
+          >
+            <Text style={styles.selectorValue}>
+              {municipioSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar municipio' : 'Sin datos por C.P.')}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <Text style={styles.label}>Colonia</Text>
+      <Pressable
+        style={styles.selector}
+        onPress={() => setColoniaModalOpen(true)}
+        disabled={coloniasDisponibles.length === 0}
+      >
+        <Text style={styles.selectorValue}>
+          {coloniaSeleccionada?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar colonia' : 'Sin datos por C.P.')}
+        </Text>
+      </Pressable>
 
       <Text style={styles.label}>Dirección</Text>
       <TextInput
@@ -449,7 +720,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Productos</Text>
-        <Pressable style={styles.smallButton} onPress={() => setProductoModalOpen(true)}>
+        <Pressable
+          style={styles.smallButton}
+          onPress={() => {
+            setProductoSearch('');
+            setProductoModalOpen(true);
+          }}
+        >
           <Text style={styles.smallButtonLabel}>+ Agregar</Text>
         </Pressable>
       </View>
@@ -513,8 +790,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       <Modal visible={clienteModalOpen} animationType="slide">
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Selecciona un cliente</Text>
+          <TextInput
+            value={clienteSearch}
+            onChangeText={setClienteSearch}
+            style={styles.input}
+            placeholder="Buscar por clave o nombre"
+          />
           <ScrollView>
-            {clientes.map((cliente) => (
+            {clientesFiltrados.map((cliente) => (
               <Pressable
                 key={cliente.id}
                 style={styles.modalItem}
@@ -538,8 +821,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       <Modal visible={productoModalOpen} animationType="slide">
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Selecciona un producto</Text>
+          <TextInput
+            value={productoSearch}
+            onChangeText={setProductoSearch}
+            style={styles.input}
+            placeholder="Buscar por código o nombre"
+          />
           <ScrollView>
-            {productos.map((producto) => (
+            {productosFiltrados.map((producto) => (
               <Pressable key={producto.id} style={styles.modalItem} onPress={() => addProduct(producto)}>
                 <Text style={styles.modalItemTitle}>{producto.codigo}</Text>
                 <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
@@ -548,6 +837,66 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             ))}
           </ScrollView>
           <Pressable style={styles.modalCloseButton} onPress={() => setProductoModalOpen(false)}>
+            <Text style={styles.modalCloseLabel}>Cerrar</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <Modal visible={estadoModalOpen} animationType="slide">
+        <View style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>Selecciona estado</Text>
+          <ScrollView>
+            {estadosDisponibles.map((estadoItem) => (
+              <Pressable
+                key={estadoItem.id}
+                style={styles.modalItem}
+                onPress={() => selectEstado(estadoItem.id)}
+              >
+                <Text style={styles.modalItemTitle}>{estadoItem.nombre}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable style={styles.modalCloseButton} onPress={() => setEstadoModalOpen(false)}>
+            <Text style={styles.modalCloseLabel}>Cerrar</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <Modal visible={municipioModalOpen} animationType="slide">
+        <View style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>Selecciona municipio</Text>
+          <ScrollView>
+            {municipiosDisponibles.map((municipioItem) => (
+              <Pressable
+                key={municipioItem.id}
+                style={styles.modalItem}
+                onPress={() => selectMunicipio(municipioItem.id)}
+              >
+                <Text style={styles.modalItemTitle}>{municipioItem.nombre}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable style={styles.modalCloseButton} onPress={() => setMunicipioModalOpen(false)}>
+            <Text style={styles.modalCloseLabel}>Cerrar</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <Modal visible={coloniaModalOpen} animationType="slide">
+        <View style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>Selecciona colonia</Text>
+          <ScrollView>
+            {coloniasDisponibles.map((coloniaItem) => (
+              <Pressable
+                key={coloniaItem.id}
+                style={styles.modalItem}
+                onPress={() => selectColonia(coloniaItem.id)}
+              >
+                <Text style={styles.modalItemTitle}>{coloniaItem.nombre}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <Pressable style={styles.modalCloseButton} onPress={() => setColoniaModalOpen(false)}>
             <Text style={styles.modalCloseLabel}>Cerrar</Text>
           </Pressable>
         </View>
@@ -595,6 +944,13 @@ const styles = StyleSheet.create({
   selectorValue: {
     color: palette.text,
     fontFamily: typography.regular,
+  },
+  helper: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 11,
+    marginTop: -8,
+    marginBottom: 10,
   },
   input: {
     borderWidth: 1,
