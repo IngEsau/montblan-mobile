@@ -18,12 +18,14 @@ import { ApiError } from '../../../shared/api/http';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
-import { OrderMode } from '../../../navigation/types';
+import { OrderMode, WarehouseStage } from '../../../navigation/types';
 
 type OrdersListScreenProps = {
   availableModes: OrderMode[];
   onOpenDetail: (orderId: number, mode: OrderMode) => void;
   onCreateSalesOrder?: () => void;
+  initialMode?: OrderMode;
+  initialWarehouseStage?: WarehouseStage;
 };
 
 const SALES_STATUS = 10;
@@ -36,16 +38,26 @@ export function OrdersListScreen({
   availableModes,
   onOpenDetail,
   onCreateSalesOrder,
+  initialMode,
+  initialWarehouseStage,
 }: OrdersListScreenProps) {
   const { token } = useAuth();
   const resolvedModes = useMemo<OrderMode[]>(
     () => (availableModes.length > 0 ? availableModes : ['sales']),
     [availableModes],
   );
-  const [mode, setMode] = useState<OrderMode>(resolvedModes[0]);
+  const resolvedInitialMode = useMemo<OrderMode>(
+    () => (initialMode && resolvedModes.includes(initialMode) ? initialMode : resolvedModes[0]),
+    [initialMode, resolvedModes],
+  );
+  const [mode, setMode] = useState<OrderMode>(resolvedInitialMode);
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
-  const [warehouseStage, setWarehouseStage] = useState<'validation' | 'delivery' | 'finished'>('validation');
+  const resolvedInitialWarehouseStage = useMemo<WarehouseStage>(
+    () => initialWarehouseStage || 'validation',
+    [initialWarehouseStage],
+  );
+  const [warehouseStage, setWarehouseStage] = useState<WarehouseStage>(resolvedInitialWarehouseStage);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -55,6 +67,18 @@ export function OrdersListScreen({
       setMode(resolvedModes[0]);
     }
   }, [mode, resolvedModes]);
+
+  useEffect(() => {
+    if (initialMode && resolvedModes.includes(initialMode)) {
+      setMode(initialMode);
+    }
+  }, [initialMode, resolvedModes]);
+
+  useEffect(() => {
+    if (initialWarehouseStage) {
+      setWarehouseStage(initialWarehouseStage);
+    }
+  }, [initialWarehouseStage]);
 
   const statusFilter =
     mode === 'sales'

@@ -25,6 +25,7 @@ type OrderDetailScreenProps = {
   onOpenWarehouseCapture: (orderId: number) => void;
   onOpenWarehouseDelivery: (orderId: number) => void;
   onEditCaptureOrder: (orderId: number) => void;
+  onOpenFinishedOrders: () => void;
 };
 
 export function OrderDetailScreen({
@@ -33,6 +34,7 @@ export function OrderDetailScreen({
   onOpenWarehouseCapture,
   onOpenWarehouseDelivery,
   onEditCaptureOrder,
+  onOpenFinishedOrders,
 }: OrderDetailScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
@@ -72,6 +74,10 @@ export function OrderDetailScreen({
   );
   const canCaptureWarehouseDelivery = useMemo(
     () => mode === 'warehouse' && order?.status === 45,
+    [mode, order?.status],
+  );
+  const canOpenFinishedList = useMemo(
+    () => mode === 'warehouse' && order?.status === 50,
     [mode, order?.status],
   );
 
@@ -201,6 +207,15 @@ export function OrderDetailScreen({
           onPress={() => onOpenWarehouseDelivery(order.id)}
         >
           <Text style={styles.actionLabel}>Capturar ruta y entrega</Text>
+        </Pressable>
+      ) : null}
+
+      {canOpenFinishedList ? (
+        <Pressable
+          style={[styles.actionButton, styles.actionButtonFinished]}
+          onPress={onOpenFinishedOrders}
+        >
+          <Text style={styles.actionLabel}>Ver pedidos terminados</Text>
         </Pressable>
       ) : null}
     </ScrollView>
@@ -345,6 +360,9 @@ const styles = StyleSheet.create({
   },
   actionButtonDelivery: {
     backgroundColor: '#4a6da7',
+  },
+  actionButtonFinished: {
+    backgroundColor: '#18a689',
   },
   actionLabel: {
     color: '#fff',
