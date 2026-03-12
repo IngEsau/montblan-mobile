@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator, NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoginScreen } from '../modules/auth/screens/LoginScreen';
 import { useAuth } from '../modules/auth/AuthContext';
 import { OrdersListScreen } from '../modules/orders/screens/OrdersListScreen';
@@ -34,6 +35,7 @@ function normalizeRole(role: string | null | undefined) {
 
 function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
   const { logout, user } = useAuth();
+  const insets = useSafeAreaInsets();
   const role = normalizeRole(user?.rol);
   const permissionFlags = user?.permissions;
   const hasPermissionFlags =
@@ -71,6 +73,9 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
     availableModes.push('sales');
   }
 
+  const tabBarBottomPadding = Math.max(insets.bottom, 8);
+  const tabBarHeight = 64 + tabBarBottomPadding;
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -85,13 +90,23 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
         tabBarInactiveTintColor: '#708495',
         tabBarStyle: {
           borderTopColor: '#d5dee7',
-          height: 62,
-          paddingBottom: 6,
-          paddingTop: 6,
+          height: tabBarHeight,
+          paddingBottom: tabBarBottomPadding,
+          paddingTop: 8,
+          overflow: 'visible',
         },
         tabBarLabelStyle: {
           fontFamily: typography.medium,
-          fontSize: 12,
+          fontSize: 11,
+          lineHeight: 16,
+          marginBottom: 2,
+        },
+        tabBarItemStyle: {
+          minHeight: 48,
+          paddingVertical: 0,
+        },
+        tabBarIconStyle: {
+          marginTop: 2,
         },
         tabBarIcon: ({ color, size }) => (
           <Ionicons
@@ -114,9 +129,11 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
       })}
     >
       <Tab.Screen name="Pedidos" options={{ title: 'Pedidos' }}>
-        {() => (
+        {({ route }) => (
           <OrdersListScreen
             availableModes={availableModes}
+            initialMode={route.params?.mode}
+            initialWarehouseStage={route.params?.warehouseStage}
             onOpenDetail={(orderId, mode) =>
               rootNavigation.navigate('PedidoDetalle', {
                 orderId,
@@ -160,12 +177,14 @@ function AppNavigator() {
           route.params.mode === 'cxc' ? (
             <CxcOrderFormScreen
               orderId={route.params.orderId}
-              onDone={(orderId) =>
-                navigation.replace('PedidoDetalle', {
-                  orderId,
-                  mode: 'warehouse',
-                })
-              }
+              onDone={() => {
+                if (navigation.canGoBack()) {
+                  navigation.goBack();
+                  return;
+                }
+
+                navigation.navigate('Tabs');
+              }}
             />
           ) : (
             <OrderDetailScreen
@@ -174,6 +193,12 @@ function AppNavigator() {
               onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
               onOpenWarehouseDelivery={(orderId) => navigation.navigate('CapturaEntregaAlmacen', { orderId })}
               onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
+              onOpenFinishedOrders={() =>
+                navigation.navigate('Tabs', {
+                  screen: 'Pedidos',
+                  params: { mode: 'warehouse', warehouseStage: 'finished' },
+                })
+              }
             />
           )
         }
@@ -228,10 +253,10 @@ function AppNavigator() {
         children={({ route, navigation }) => (
           <WarehouseDeliveryScreen
             orderId={route.params.orderId}
-            onDone={(orderId) =>
-              navigation.replace('PedidoDetalle', {
-                orderId,
-                mode: 'warehouse',
+            onDone={() =>
+              navigation.replace('Tabs', {
+                screen: 'Pedidos',
+                params: { mode: 'warehouse', warehouseStage: 'finished' },
               })
             }
           />
@@ -242,7 +267,12 @@ function AppNavigator() {
 }
 
 export function RootNavigator() {
-  const { isLoading, token } = useAuth();
+  const { isLoading, token, user } = useAuth();
+  const navigationKey = token ? `app-${user?.id ?? '0'}` : 'auth';
+  const linking = {
+    enabled: false,
+    prefixes: [],
+  };
 
   if (isLoading) {
     return (
@@ -252,7 +282,11 @@ export function RootNavigator() {
     );
   }
 
-  return <NavigationContainer>{token ? <AppNavigator /> : <LoginScreen />}</NavigationContainer>;
+  return (
+    <NavigationContainer key={navigationKey} linking={linking}>
+      {token ? <AppNavigator /> : <LoginScreen />}
+    </NavigationContainer>
+  );
 }
 
 const styles = StyleSheet.create({
