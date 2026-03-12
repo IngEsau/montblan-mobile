@@ -15,7 +15,7 @@ import { typography } from '../../../shared/theme/typography';
 import { formatMoney, getTodayYmd } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido, PedidoHistorialDocumento, PedidoPagoItem } from '../types';
+import { Pedido, PedidoPagoItem } from '../types';
 
 type CxcOrderFormScreenProps = {
   orderId: number;
@@ -49,7 +49,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     cobranza_status: 'NO PAGADO',
   });
   const [noFacturaInput, setNoFacturaInput] = useState('');
-  const [documentoByHistorial, setDocumentoByHistorial] = useState<Record<number, string>>({});
   const [montoPago, setMontoPago] = useState('');
   const [fechaPago, setFechaPago] = useState(getTodayYmd());
   const [referenciaPago, setReferenciaPago] = useState('');
@@ -60,6 +59,18 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
   const isFactura = useMemo(() => (order?.tipo_fac_rem ?? 10) === 10, [order?.tipo_fac_rem]);
   const canOperateCxc = useMemo(() => (order?.status ?? 0) === 20, [order?.status]);
+  const documentoGlobalAplicado = useMemo(() => {
+    if (!order) {
+      return 'SIN DOCUMENTO GLOBAL';
+    }
+
+    if ((order.tipo_fac_rem ?? 10) === 20) {
+      return 'RECIBO SIMPLE';
+    }
+
+    const current = (order.no_factura || '').trim();
+    return current || 'SIN DOCUMENTO GLOBAL';
+  }, [order]);
 
   const applyClampMonto = useCallback(
     (raw: string) => {
@@ -102,12 +113,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       } else {
         setNoFacturaInput(item.no_factura || '');
       }
-
-      const documentInputs: Record<number, string> = {};
-      (item.historial_documentos || []).forEach((row) => {
-        documentInputs[row.id_pedido_historial] = row.numero_factura || '';
-      });
-      setDocumentoByHistorial(documentInputs);
 
       setErrorMessage(null);
     } catch (error) {
@@ -218,36 +223,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       ],
       { cancelable: true },
     );
-  };
-
-  const registrarDocumentoHistorial = async (row: PedidoHistorialDocumento) => {
-    if (!token || !order || isBusy) {
-      return;
-    }
-
-    const raw = documentoByHistorial[row.id_pedido_historial] || '';
-    const numero = isFactura ? raw.trim() : 'RECIBO SIMPLE';
-    if (isFactura && !numero) {
-      setErrorMessage(`Debes capturar documento para historial #${row.id_pedido_historial}.`);
-      return;
-    }
-
-    setIsBusy(true);
-    setErrorMessage(null);
-    try {
-      const response = await ordersApi.registrarDocumento(token, order.id, {
-        id_pedido_historial: row.id_pedido_historial,
-        numero_factura: numero,
-      });
-      Alert.alert('Documento registrado', response.message);
-      await fetchCxcData();
-    } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : 'No fue posible registrar documento de historial.';
-      setErrorMessage(message);
-    } finally {
-      setIsBusy(false);
-    }
   };
 
   const sendToAlmacenFinal = async () => {
@@ -391,7 +366,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Documento por surtido</Text>
+        <Text style={styles.cardTitle}>Historial de surtido (informativo)</Text>
         {(order.historial_documentos || []).length === 0 ? (
           <Text style={styles.hint}>Sin registros de historial para documento.</Text>
         ) : (
@@ -401,25 +376,11 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                 Historial #{row.id_pedido_historial} | Subtotal: {formatMoney(row.subtotal_pedido)}
               </Text>
               <Text style={styles.historialMeta}>Fecha surtido: {formatHistorialDate(row.fecha_surtido)}</Text>
-              <TextInput
-                value={isFactura ? documentoByHistorial[row.id_pedido_historial] || '' : 'RECIBO SIMPLE'}
-                onChangeText={(text) =>
-                  setDocumentoByHistorial((prev) => ({
-                    ...prev,
-                    [row.id_pedido_historial]: text,
-                  }))
-                }
-                editable={isFactura}
-                style={styles.input}
-                placeholder={isFactura ? 'Número de documento' : 'RECIBO SIMPLE'}
-              />
-              <Pressable
-                style={styles.secondaryButton}
-                onPress={() => registrarDocumentoHistorial(row)}
-                disabled={!canOperateCxc || isBusy}
-              >
-                <Text style={styles.secondaryButtonLabel}>Registrar documento</Text>
-              </Pressable>
+              <Text style={styles.historialMeta}>
+                Documento aplicado: {documentoGlobalAplicado !== 'SIN DOCUMENTO GLOBAL'
+                  ? documentoGlobalAplicado
+                  : row.numero_factura || 'SIN DOCUMENTO GLOBAL'}
+              </Text>
             </View>
           ))
         )}
