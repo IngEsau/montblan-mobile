@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "montblan-mobile",
+    "name": "Montblan",
     "slug": "montblan-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -24,6 +24,8 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
+      "name": "Montblan",
+      "shortName": "Montblan",
       "favicon": "./assets/favicon.png"
     }
   }

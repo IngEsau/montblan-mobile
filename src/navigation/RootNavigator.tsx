@@ -122,7 +122,8 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
           />
         ),
         headerRight: () => (
-          <Pressable onPress={logout}>
+          <Pressable onPress={logout} style={styles.logoutButton}>
+            <Ionicons name="log-out-outline" size={16} color="#fff" />
             <Text style={styles.logoutText}>Salir</Text>
           </Pressable>
         ),
@@ -273,6 +274,11 @@ export function RootNavigator() {
     enabled: false,
     prefixes: [],
   };
+  const documentTitle = {
+    enabled: true,
+    formatter: (options: { title?: string } | undefined) =>
+      options?.title ? `Montblan · ${options.title}` : 'Montblan',
+  };
 
   if (isLoading) {
     return (
@@ -283,7 +289,7 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer key={navigationKey} linking={linking}>
+    <NavigationContainer key={navigationKey} linking={linking} documentTitle={documentTitle}>
       {token ? <AppNavigator /> : <LoginScreen />}
     </NavigationContainer>
   );
@@ -300,5 +306,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginRight: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
   },
 });
