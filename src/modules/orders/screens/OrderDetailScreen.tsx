@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { ApiError } from '../../../shared/api/http';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
@@ -24,6 +25,7 @@ type OrderDetailScreenProps = {
   mode: OrderMode;
   onOpenWarehouseCapture: (orderId: number) => void;
   onEditCaptureOrder: (orderId: number) => void;
+  onOpenCxcOperation: (orderId: number) => void;
   onOpenFinishedOrders: () => void;
 };
 
@@ -32,6 +34,7 @@ export function OrderDetailScreen({
   mode,
   onOpenWarehouseCapture,
   onEditCaptureOrder,
+  onOpenCxcOperation,
   onOpenFinishedOrders,
 }: OrderDetailScreenProps) {
   const { token } = useAuth();
@@ -61,13 +64,19 @@ export function OrderDetailScreen({
     }
   }, [orderId, token]);
 
-  useEffect(() => {
-    fetchDetail();
-  }, [fetchDetail]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchDetail();
+    }, [fetchDetail]),
+  );
 
   const canSendToAuthorization = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
   const canCaptureWarehouse = useMemo(
     () => mode === 'warehouse' && order?.status === 30,
+    [mode, order?.status],
+  );
+  const canOperateCxc = useMemo(
+    () => mode === 'cxc' && (order?.status === 20 || order?.status === 45),
     [mode, order?.status],
   );
   const canOpenFinishedList = useMemo(
@@ -196,6 +205,15 @@ export function OrderDetailScreen({
           onPress={() => onOpenWarehouseCapture(order.id)}
         >
           <Text style={styles.actionLabel}>Capturar surtido</Text>
+        </Pressable>
+      ) : null}
+
+      {canOperateCxc ? (
+        <Pressable
+          style={[styles.actionButton, styles.actionButtonCxc]}
+          onPress={() => onOpenCxcOperation(order.id)}
+        >
+          <Text style={styles.actionLabel}>{order.status === 20 ? 'Abrir autorización' : 'Abrir facturación'}</Text>
         </Pressable>
       ) : null}
 
@@ -347,8 +365,8 @@ const styles = StyleSheet.create({
   actionButtonEdit: {
     backgroundColor: '#49738e',
   },
-  actionButtonDelivery: {
-    backgroundColor: '#4a6da7',
+  actionButtonCxc: {
+    backgroundColor: '#6b60c9',
   },
   actionButtonFinished: {
     backgroundColor: '#18a689',
