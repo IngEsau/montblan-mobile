@@ -16,6 +16,9 @@ export type Cliente = {
   calle: string | null;
   telefono: string | null;
   saldo: number;
+  asignado_a_id?: number | null;
+  asignado_a_username?: string | null;
+  asignado_a_nombre?: string | null;
 };
 
 export type Producto = {
