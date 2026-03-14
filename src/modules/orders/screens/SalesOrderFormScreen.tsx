@@ -26,6 +26,7 @@ type DraftLine = {
   precio: number;
   cantidad: string;
   descripcion: string;
+  observaciones: string;
 };
 
 type SalesOrderFormScreenProps = {
@@ -62,6 +63,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [numExt, setNumExt] = useState('');
   const [referenciaDireccion, setReferenciaDireccion] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [instruccionesCredito, setInstruccionesCredito] = useState('');
+  const [instruccionesAlmacen, setInstruccionesAlmacen] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
   const [isLookingUpPostalCode, setIsLookingUpPostalCode] = useState(false);
@@ -99,6 +102,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setClienteRfc(item.cliente_rfc || '');
         setUsoCfdi(item.uso_cfdi || '');
         setObservaciones(item.observaciones || '');
+        setInstruccionesCredito(item.instrucciones_credito || '');
+        setInstruccionesAlmacen(item.instrucciones_almacen || '');
         setCodigoPostal(item.direccion?.codigo_postal || '');
         setDireccion(item.direccion?.direccion || '');
         setNumInt(item.direccion?.num_int || '');
@@ -132,6 +137,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             calle: item.direccion?.direccion || null,
             telefono: item.cliente_telefono || null,
             saldo: 0,
+            asignado_a_nombre: item.vendedor || null,
           });
         }
 
@@ -148,6 +154,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               precio: Number(line.precio || 0),
               cantidad: String(line.cantidad || 0),
               descripcion: line.descripcion || lineName,
+              observaciones: line.observaciones || '',
             };
           }),
         );
@@ -353,6 +360,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       precio: Number(producto.precio_venta || 0),
       cantidad: '1',
       descripcion: producto.nombre || producto.codigo,
+      observaciones: '',
     };
 
     setLines((prev) => [...prev, line]);
@@ -380,6 +388,24 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       }),
     );
   };
+
+  const vendedorResolvido = useMemo(() => {
+    const assignedName = selectedCliente?.asignado_a_nombre?.trim();
+    if (assignedName) {
+      return assignedName;
+    }
+
+    const assignedUsername = selectedCliente?.asignado_a_username?.trim();
+    if (assignedUsername) {
+      return assignedUsername;
+    }
+
+    if (isEditMode) {
+      return '';
+    }
+
+    return user?.username || 'movil';
+  }, [isEditMode, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
 
   const removeLine = (lineId: string) => {
     setLines((prev) => prev.filter((line) => line.id !== lineId));
@@ -489,7 +515,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
           observaciones,
-          vendedor: user?.username || 'movil',
+          instrucciones_credito: instruccionesCredito.trim() || undefined,
+          instrucciones_almacen: instruccionesAlmacen.trim() || undefined,
+          vendedor: vendedorResolvido || undefined,
         },
         direccion: {
           direccion: direccion.trim(),
@@ -510,6 +538,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             cantidad: qty,
             precio: Number(line.precio.toFixed(2)),
             descripcion: line.descripcion,
+            observaciones: line.observaciones.trim() || undefined,
             importe,
           };
         }),
@@ -718,6 +747,34 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         multiline
       />
 
+      <Text style={styles.label}>Instrucciones para Crédito</Text>
+      <TextInput
+        value={instruccionesCredito}
+        onChangeText={setInstruccionesCredito}
+        placeholder="Ej. no facturar arriba de cierto monto"
+        style={[styles.input, styles.textarea]}
+        multiline
+      />
+
+      <Text style={styles.label}>Instrucciones para Almacén</Text>
+      <TextInput
+        value={instruccionesAlmacen}
+        onChangeText={setInstruccionesAlmacen}
+        placeholder="Ej. material con corte / ruta sugerida"
+        style={[styles.input, styles.textarea]}
+        multiline
+      />
+
+      <Text style={styles.label}>Vendedor</Text>
+      <View style={styles.selector}>
+        <Text style={styles.selectorValue}>{vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}</Text>
+      </View>
+      <Text style={styles.helper}>
+        {selectedCliente?.asignado_a_id
+          ? 'El vendedor se toma del cliente asignado en catálogo.'
+          : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
+      </Text>
+
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Productos</Text>
         <Pressable
@@ -769,6 +826,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <Text style={styles.lineImporte}>
               Importe: {formatMoney(Number(line.cantidad || 0) * Number(line.precio || 0))}
             </Text>
+            <Text style={styles.lineLabel}>Observaciones por partida</Text>
+            <TextInput
+              value={line.observaciones}
+              onChangeText={(value) => updateLine(line.id, 'observaciones', value)}
+              placeholder="Indicaciones específicas para esta partida"
+              style={[styles.lineInput, styles.lineTextarea]}
+              multiline
+            />
           </View>
         ))
       )}
@@ -1078,6 +1143,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     color: palette.text,
     fontFamily: typography.regular,
+  },
+  lineTextarea: {
+    minHeight: 76,
+    marginTop: 6,
+    textAlignVertical: 'top',
   },
   lineImporte: {
     marginTop: 8,

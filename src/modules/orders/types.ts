@@ -28,6 +28,7 @@ export type PedidoDetalleLinea = {
   faltante: number;
   rollo: number | null;
   descripcion: string | null;
+  observaciones: string | null;
   precio: number;
   importe: number;
   tipo_comprobante: number;
@@ -62,6 +63,8 @@ export type Pedido = PedidoListItem & {
   uso_cfdi: string | null;
   cliente_condiciones: string | null;
   observaciones: string | null;
+  instrucciones_credito?: string | null;
+  instrucciones_almacen?: string | null;
   surtido: number | null;
   rollo: number | null;
   total_pagado?: number;
@@ -92,6 +95,8 @@ export type PedidoCreatePayload = {
     tipo_fac_rem: number;
     fecha_entrega?: string;
     observaciones?: string;
+    instrucciones_credito?: string;
+    instrucciones_almacen?: string;
     vendedor?: string;
   };
   direccion?: {
@@ -109,6 +114,7 @@ export type PedidoCreatePayload = {
     cantidad: number;
     precio: number;
     descripcion?: string;
+    observaciones?: string;
     importe?: number;
   }>;
 };
