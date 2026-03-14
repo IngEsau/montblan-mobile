@@ -192,8 +192,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       Alert.alert(
         'Almacén actualizado',
         response.standby
-          ? 'Pedido en standby por surtido incompleto. Puedes continuar capturando después.'
-          : 'Pedido surtido completo. Ya puedes enviarlo a CTAS X COBRAR.',
+          ? 'Pedido con surtido parcial. Puedes continuar capturando después.'
+          : 'Pedido surtido completo. Ya puedes enviarlo a FACTURACIÓN.',
       );
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible guardar la captura de almacén.';
@@ -203,18 +203,18 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
     }
   };
 
-  const sendToCtasCobrar = async () => {
+  const sendToFacturacion = async () => {
     if (!token || !order || isSaving) {
       return;
     }
 
     setIsSaving(true);
     try {
-      await ordersApi.transition(token, order.id, 'ctas_cobrar');
-      Alert.alert('Flujo actualizado', 'Pedido enviado a CTAS X COBRAR.');
+      await ordersApi.transition(token, order.id, 'facturacion');
+      Alert.alert('Flujo actualizado', 'Pedido enviado a FACTURACIÓN.');
       onDone(order.id);
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : 'No fue posible enviar a CTAS X COBRAR.';
+      const message = error instanceof ApiError ? error.message : 'No fue posible enviar a FACTURACIÓN.';
       Alert.alert('Error', message);
     } finally {
       setIsSaving(false);
@@ -296,14 +296,14 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       </Pressable>
 
       {isCompleteByOrder ? (
-        <Pressable style={styles.sendButton} onPress={sendToCtasCobrar} disabled={isSaving}>
-          <Text style={styles.sendLabel}>Enviar a CTAS X COBRAR</Text>
+        <Pressable style={styles.sendButton} onPress={sendToFacturacion} disabled={isSaving}>
+          <Text style={styles.sendLabel}>Enviar a Facturación</Text>
         </Pressable>
       ) : null}
 
       {!isCompleteByOrder ? (
         <Text style={styles.helperInfo}>
-          Para enviar a CTAS X COBRAR, primero guarda la captura y confirma que el estatus quede en COMPLETO.
+          Para enviar a FACTURACIÓN, primero guarda la captura y confirma que el estatus quede en COMPLETO.
         </Text>
       ) : null}
     </ScrollView>

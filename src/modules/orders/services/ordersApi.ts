@@ -39,7 +39,13 @@ function buildOrdersQuery({ search, status, page = 1 }: ListOrdersParams) {
   return params.toString();
 }
 
-export type PedidoTransitionTarget = 'almacen' | 'ctas_cobrar' | 'almacen_final' | 'terminado';
+export type PedidoTransitionTarget =
+  | 'autorizacion'
+  | 'almacen'
+  | 'facturacion'
+  | 'terminado'
+  | 'ctas_cobrar'
+  | 'almacen_final';
 
 type TransitionPayload = {
   ruta?: string;

@@ -10,7 +10,6 @@ import { OrdersListScreen } from '../modules/orders/screens/OrdersListScreen';
 import { OrderDetailScreen } from '../modules/orders/screens/OrderDetailScreen';
 import { SalesOrderFormScreen } from '../modules/orders/screens/SalesOrderFormScreen';
 import { WarehouseOrderFormScreen } from '../modules/orders/screens/WarehouseOrderFormScreen';
-import { WarehouseDeliveryScreen } from '../modules/orders/screens/WarehouseDeliveryScreen';
 import { CxcOrderFormScreen } from '../modules/orders/screens/CxcOrderFormScreen';
 import { ProductsCatalogScreen } from '../modules/catalog/screens/ProductsCatalogScreen';
 import { ClientsCatalogScreen } from '../modules/catalog/screens/ClientsCatalogScreen';
@@ -135,6 +134,7 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
             availableModes={availableModes}
             initialMode={route.params?.mode}
             initialWarehouseStage={route.params?.warehouseStage}
+            initialCxcStage={route.params?.cxcStage}
             onOpenDetail={(orderId, mode) =>
               rootNavigation.navigate('PedidoDetalle', {
                 orderId,
@@ -192,7 +192,6 @@ function AppNavigator() {
               orderId={route.params.orderId}
               mode={route.params.mode}
               onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
-              onOpenWarehouseDelivery={(orderId) => navigation.navigate('CapturaEntregaAlmacen', { orderId })}
               onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
               onOpenFinishedOrders={() =>
                 navigation.navigate('Tabs', {
@@ -243,21 +242,6 @@ function AppNavigator() {
               navigation.replace('PedidoDetalle', {
                 orderId,
                 mode: 'warehouse',
-              })
-            }
-          />
-        )}
-      />
-      <RootStack.Screen
-        name="CapturaEntregaAlmacen"
-        options={{ title: 'Ruta y fecha de entrega' }}
-        children={({ route, navigation }) => (
-          <WarehouseDeliveryScreen
-            orderId={route.params.orderId}
-            onDone={() =>
-              navigation.replace('Tabs', {
-                screen: 'Pedidos',
-                params: { mode: 'warehouse', warehouseStage: 'finished' },
               })
             }
           />
