@@ -77,6 +77,15 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     return current || ((order.tipo_fac_rem ?? 10) === 20 ? 'SIN RECIBO SIMPLE' : 'SIN FACTURA');
   }, [order]);
   const documentoGuardado = useMemo(() => Boolean((order?.no_factura || '').trim()), [order?.no_factura]);
+  const documentInputPreview = useMemo(() => noFacturaInput.trim(), [noFacturaInput]);
+  const documentActionLabel = useMemo(
+    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Guardar recibo simple' : 'Guardar factura'),
+    [order?.tipo_fac_rem],
+  );
+  const finishActionLabel = useMemo(
+    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con recibo simple' : 'Terminar pedido facturado'),
+    [order?.tipo_fac_rem],
+  );
   const noPedidoVisible = useMemo(() => {
     const noPedido = (order?.no_pedido || '').trim();
     if (noPedido) {
@@ -107,6 +116,26 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       ].filter((item) => item.value),
     [order?.cliente_condiciones, order?.instrucciones_almacen, order?.instrucciones_credito, order?.observaciones],
   );
+  const billingChecklist = useMemo(
+    () => [
+      {
+        label: documentFieldLabel,
+        done: documentoGuardado,
+        value: documentoGlobalAplicado,
+      },
+      {
+        label: 'No. pedido visible',
+        done: Boolean((order?.no_pedido || '').trim()),
+        value: noPedidoVisible,
+      },
+      {
+        label: 'Cobranza',
+        done: true,
+        value: totals.cobranza_status,
+      },
+    ],
+    [documentFieldLabel, documentoGlobalAplicado, documentoGuardado, noPedidoVisible, order?.no_pedido, totals.cobranza_status],
+  );
 
   const applyClampMonto = useCallback(
     (raw: string) => {
@@ -129,20 +158,28 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
     setIsLoading(true);
     try {
-      const [detailResponse, pagosResponse] = await Promise.all([
-        ordersApi.detail(token, orderId),
-        ordersApi.pagos(token, orderId),
-      ]);
-
+      const detailResponse = await ordersApi.detail(token, orderId);
       const item = detailResponse.item;
       setOrder(item);
-      setPagos(pagosResponse.items || []);
-      setTotals({
-        total_pedido: pagosResponse.totals.total_pedido,
-        total_pagado: pagosResponse.totals.total_pagado,
-        saldo: pagosResponse.totals.saldo,
-        cobranza_status: pagosResponse.cobranza_status || item.ctas_cobrar_status || 'NO PAGADO',
-      });
+
+      if ((item.status ?? 0) === 45) {
+        const pagosResponse = await ordersApi.pagos(token, orderId);
+        setPagos(pagosResponse.items || []);
+        setTotals({
+          total_pedido: pagosResponse.totals.total_pedido,
+          total_pagado: pagosResponse.totals.total_pagado,
+          saldo: pagosResponse.totals.saldo,
+          cobranza_status: pagosResponse.cobranza_status || item.ctas_cobrar_status || 'NO PAGADO',
+        });
+      } else {
+        setPagos([]);
+        setTotals({
+          total_pedido: Number(item.total || 0),
+          total_pagado: Number(item.total_pagado || 0),
+          saldo: Number(item.saldo ?? item.total ?? 0),
+          cobranza_status: item.ctas_cobrar_status || 'NO PAGADO',
+        });
+      }
 
       setNoFacturaInput(item.no_factura || '');
 
@@ -387,6 +424,19 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       {isBillingStage ? (
         <>
           <View style={styles.card}>
+            <Text style={styles.cardTitle}>Checklist de facturación</Text>
+            {billingChecklist.map((item) => (
+              <View key={item.label} style={styles.checkRow}>
+                <View style={[styles.checkDot, item.done ? styles.checkDotDone : styles.checkDotPending]} />
+                <View style={styles.checkContent}>
+                  <Text style={styles.checkLabel}>{item.label}</Text>
+                  <Text style={styles.checkValue}>{item.value}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.card}>
             <Text style={styles.cardTitle}>Documento final</Text>
             <Text style={styles.fieldLabel}>{documentFieldLabel}</Text>
             <TextInput
@@ -398,8 +448,16 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <Text style={styles.hint}>
               Al guardar el documento final, el sistema sincroniza ese folio como número visible del pedido.
             </Text>
+            {documentInputPreview ? (
+              <View style={styles.previewCard}>
+                <Text style={styles.previewLabel}>Vista previa de sincronización</Text>
+                <Text style={styles.previewValue}>
+                  No. pedido: {documentInputPreview} | {documentFieldLabel}: {documentInputPreview}
+                </Text>
+              </View>
+            ) : null}
             <Pressable style={styles.secondaryButton} onPress={saveDocumentoGlobal} disabled={isBusy}>
-              <Text style={styles.secondaryButtonLabel}>Guardar documento</Text>
+              <Text style={styles.secondaryButtonLabel}>{documentActionLabel}</Text>
             </Pressable>
           </View>
 
@@ -486,7 +544,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Historial de surtido (informativo)</Text>
+            <Text style={styles.cardTitle}>Historial de surtido usado para documento</Text>
             {(order.historial_documentos || []).length === 0 ? (
               <Text style={styles.hint}>Sin registros de historial para documento.</Text>
             ) : (
@@ -517,7 +575,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             onPress={continueFlow}
             disabled={isBusy || !documentoGuardado}
           >
-            <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : 'Terminar pedido'}</Text>
+            <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : finishActionLabel}</Text>
           </Pressable>
         </>
       ) : null}
@@ -648,6 +706,39 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     fontSize: 13,
   },
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  checkDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  checkDotDone: {
+    backgroundColor: palette.primary,
+  },
+  checkDotPending: {
+    backgroundColor: '#d9c07a',
+  },
+  checkContent: {
+    flex: 1,
+  },
+  checkLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  checkValue: {
+    color: palette.text,
+    fontFamily: typography.regular,
+    fontSize: 13,
+  },
   fieldLabel: {
     color: palette.mutedText,
     fontFamily: typography.medium,
@@ -668,6 +759,26 @@ const styles = StyleSheet.create({
   textarea: {
     minHeight: 70,
     textAlignVertical: 'top',
+  },
+  previewCard: {
+    marginTop: 8,
+    marginBottom: 2,
+    borderRadius: 10,
+    backgroundColor: '#f7fafc',
+    borderWidth: 1,
+    borderColor: '#e7eef5',
+    padding: 10,
+  },
+  previewLabel: {
+    color: palette.mutedText,
+    fontFamily: typography.medium,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  previewValue: {
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 13,
   },
   hint: {
     marginTop: 8,
