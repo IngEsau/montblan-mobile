@@ -1,13 +1,15 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type OrderMode = 'sales' | 'warehouse' | 'cxc';
-export type WarehouseStage = 'validation' | 'delivery' | 'finished';
+export type WarehouseStage = 'processing' | 'finished';
+export type CxcStage = 'authorization' | 'billing';
 
 export type AppTabParamList = {
   Pedidos:
     | {
         mode?: OrderMode;
         warehouseStage?: WarehouseStage;
+        cxcStage?: CxcStage;
       }
     | undefined;
   Productos: undefined;
@@ -20,5 +22,4 @@ export type RootStackParamList = {
   NuevoPedidoVenta: undefined;
   EditarPedidoVenta: { orderId: number };
   CapturaAlmacen: { orderId: number };
-  CapturaEntregaAlmacen: { orderId: number };
 };

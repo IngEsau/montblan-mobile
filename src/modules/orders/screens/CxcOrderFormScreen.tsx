@@ -58,18 +58,19 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isFactura = useMemo(() => (order?.tipo_fac_rem ?? 10) === 10, [order?.tipo_fac_rem]);
-  const canOperateCxc = useMemo(() => (order?.status ?? 0) === 20, [order?.status]);
+  const isAuthorizationStage = useMemo(() => (order?.status ?? 0) === 20, [order?.status]);
+  const isBillingStage = useMemo(() => (order?.status ?? 0) === 45, [order?.status]);
+  const documentFieldLabel = useMemo(
+    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. recibo simple' : 'No. factura'),
+    [order?.tipo_fac_rem],
+  );
   const documentoGlobalAplicado = useMemo(() => {
     if (!order) {
       return 'SIN DOCUMENTO GLOBAL';
     }
 
-    if ((order.tipo_fac_rem ?? 10) === 20) {
-      return 'RECIBO SIMPLE';
-    }
-
     const current = (order.no_factura || '').trim();
-    return current || 'SIN DOCUMENTO GLOBAL';
+    return current || ((order.tipo_fac_rem ?? 10) === 20 ? 'SIN RECIBO SIMPLE' : 'SIN FACTURA');
   }, [order]);
 
   const applyClampMonto = useCallback(
@@ -108,11 +109,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
         cobranza_status: pagosResponse.cobranza_status || item.ctas_cobrar_status || 'NO PAGADO',
       });
 
-      if ((item.tipo_fac_rem || 10) === 20) {
-        setNoFacturaInput('RECIBO SIMPLE');
-      } else {
-        setNoFacturaInput(item.no_factura || '');
-      }
+      setNoFacturaInput(item.no_factura || '');
 
       setErrorMessage(null);
     } catch (error) {
@@ -132,8 +129,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       return;
     }
 
-    const numero = isFactura ? noFacturaInput.trim() : 'RECIBO SIMPLE';
-    if (isFactura && !numero) {
+    const numero = noFacturaInput.trim();
+    if (!numero) {
       setErrorMessage('Debes capturar el número de documento.');
       return;
     }
@@ -225,7 +222,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     );
   };
 
-  const sendToAlmacenFinal = async () => {
+  const continueFlow = async () => {
     if (!token || !order || isBusy) {
       return;
     }
@@ -233,12 +230,19 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     setIsBusy(true);
     setErrorMessage(null);
     try {
-      const response = await ordersApi.transition(token, order.id, 'almacen_final');
-      Alert.alert('Flujo actualizado', response.message || 'Pedido enviado a almacén final.');
+      const transitionTarget = isAuthorizationStage ? 'almacen' : 'terminado';
+      const response = await ordersApi.transition(token, order.id, transitionTarget);
+      Alert.alert(
+        'Flujo actualizado',
+        response.message || (isAuthorizationStage ? 'Pedido enviado a almacén.' : 'Pedido terminado correctamente.'),
+      );
       onDone(order.id);
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : 'No fue posible enviar a ALMACÉN final.';
+      const message = error instanceof ApiError
+        ? error.message
+        : isAuthorizationStage
+          ? 'No fue posible enviar a ALMACÉN.'
+          : 'No fue posible terminar el pedido.';
       setErrorMessage(message);
     } finally {
       setIsBusy(false);
@@ -263,135 +267,165 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Ctas x Cobrar</Text>
+      <Text style={styles.title}>{isAuthorizationStage ? 'Autorización' : 'Facturación'}</Text>
       <Text style={styles.subtitle}>Pedido #{order.no_pedido || order.id}</Text>
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Tipo: {order.tipo_fac_rem_label || '-'}</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Documento global</Text>
-        <TextInput
-          value={noFacturaInput}
-          onChangeText={setNoFacturaInput}
-          style={styles.input}
-          editable={isFactura}
-          placeholder={isFactura ? 'Ingrese el número de documento' : 'RECIBO SIMPLE'}
-        />
-        {!isFactura ? <Text style={styles.hint}>Para recibo simple se aplica automáticamente.</Text> : null}
-        <Pressable style={styles.secondaryButton} onPress={saveDocumentoGlobal} disabled={!canOperateCxc || isBusy}>
-          <Text style={styles.secondaryButtonLabel}>Guardar documento</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Cobranza</Text>
-        <Text style={styles.meta}>Estatus: {totals.cobranza_status}</Text>
-        <View style={styles.amountsRow}>
-          <View style={styles.amountItem}>
-            <Text style={styles.amountLabel}>Total pedido</Text>
-            <Text style={styles.amountValue}>{formatMoney(totals.total_pedido)}</Text>
-          </View>
-          <View style={styles.amountItem}>
-            <Text style={styles.amountLabel}>Total pagado</Text>
-            <Text style={styles.amountValue}>{formatMoney(totals.total_pagado)}</Text>
-          </View>
-          <View style={styles.amountItem}>
-            <Text style={styles.amountLabel}>Saldo</Text>
-            <Text style={styles.amountValue}>{formatMoney(totals.saldo)}</Text>
-          </View>
-        </View>
-
-        <Text style={styles.fieldLabel}>Monto pago</Text>
-        <TextInput
-          value={montoPago}
-          onChangeText={(text) => setMontoPago(formatMontoInput(text))}
-          onBlur={() => setMontoPago((prev) => applyClampMonto(prev))}
-          keyboardType="decimal-pad"
-          style={styles.input}
-          placeholder="0.00"
-        />
-
-        <Text style={styles.fieldLabel}>Fecha pago (YYYY-MM-DD)</Text>
-        <TextInput
-          value={fechaPago}
-          onChangeText={setFechaPago}
-          style={styles.input}
-          placeholder={getTodayYmd()}
-        />
-
-        <Text style={styles.fieldLabel}>Referencia</Text>
-        <TextInput
-          value={referenciaPago}
-          onChangeText={setReferenciaPago}
-          style={styles.input}
-          placeholder="Referencia"
-        />
-
-        <Text style={styles.fieldLabel}>Notas</Text>
-        <TextInput
-          value={notasPago}
-          onChangeText={setNotasPago}
-          style={[styles.input, styles.textarea]}
-          placeholder="Notas"
-          multiline
-        />
-
-        <Pressable style={styles.primaryButton} onPress={registerPago} disabled={!canOperateCxc || isBusy}>
-          <Text style={styles.primaryButtonLabel}>Registrar pago</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Pagos registrados</Text>
-        {pagos.length === 0 ? (
-          <Text style={styles.hint}>Sin pagos registrados.</Text>
-        ) : (
-          pagos.map((pago) => (
-            <View key={pago.id} style={styles.paymentRow}>
-              <View style={styles.paymentInfo}>
-                <Text style={styles.paymentAmount}>{formatMoney(pago.monto)}</Text>
-                <Text style={styles.paymentMeta}>{pago.fecha_pago}</Text>
-                <Text style={styles.paymentMeta}>{pago.referencia || 'Sin referencia'}</Text>
+      {isAuthorizationStage ? (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Autorización del pedido</Text>
+            <Text style={styles.meta}>En esta fase CXC valida el pedido y lo libera para surtido en almacén.</Text>
+            <View style={styles.amountsRow}>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Subtotal</Text>
+                <Text style={styles.amountValue}>{formatMoney(order.subtotal)}</Text>
               </View>
-              <Pressable
-                style={styles.deleteButton}
-                onPress={() => deletePago(pago)}
-                disabled={!canOperateCxc || isBusy}
-              >
-                <Text style={styles.deleteButtonLabel}>Eliminar</Text>
-              </Pressable>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>IVA</Text>
+                <Text style={styles.amountValue}>{formatMoney(order.iva)}</Text>
+              </View>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Total</Text>
+                <Text style={styles.amountValue}>{formatMoney(order.total)}</Text>
+              </View>
             </View>
-          ))
-        )}
-      </View>
+          </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Historial de surtido (informativo)</Text>
-        {(order.historial_documentos || []).length === 0 ? (
-          <Text style={styles.hint}>Sin registros de historial para documento.</Text>
-        ) : (
-          (order.historial_documentos || []).map((row) => (
-            <View key={row.id_pedido_historial} style={styles.historialRow}>
-              <Text style={styles.historialMeta}>
-                Historial #{row.id_pedido_historial} | Subtotal: {formatMoney(row.subtotal_pedido)}
-              </Text>
-              <Text style={styles.historialMeta}>Fecha surtido: {formatHistorialDate(row.fecha_surtido)}</Text>
-              <Text style={styles.historialMeta}>
-                Documento aplicado: {documentoGlobalAplicado !== 'SIN DOCUMENTO GLOBAL'
-                  ? documentoGlobalAplicado
-                  : row.numero_factura || 'SIN DOCUMENTO GLOBAL'}
-              </Text>
+          <Pressable style={styles.primaryButton} onPress={continueFlow} disabled={isBusy}>
+            <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : 'Autorizar y enviar a Almacén'}</Text>
+          </Pressable>
+        </>
+      ) : null}
+
+      {isBillingStage ? (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Documento final</Text>
+            <Text style={styles.fieldLabel}>{documentFieldLabel}</Text>
+            <TextInput
+              value={noFacturaInput}
+              onChangeText={setNoFacturaInput}
+              style={styles.input}
+              placeholder={isFactura ? 'Ingrese el número de factura' : 'Ingrese el número de recibo simple'}
+            />
+            <Pressable style={styles.secondaryButton} onPress={saveDocumentoGlobal} disabled={isBusy}>
+              <Text style={styles.secondaryButtonLabel}>Guardar documento</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Cobranza</Text>
+            <Text style={styles.meta}>Estatus: {totals.cobranza_status}</Text>
+            <View style={styles.amountsRow}>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Total pedido</Text>
+                <Text style={styles.amountValue}>{formatMoney(totals.total_pedido)}</Text>
+              </View>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Total pagado</Text>
+                <Text style={styles.amountValue}>{formatMoney(totals.total_pagado)}</Text>
+              </View>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Saldo</Text>
+                <Text style={styles.amountValue}>{formatMoney(totals.saldo)}</Text>
+              </View>
             </View>
-          ))
-        )}
-      </View>
 
-      <Pressable style={styles.primaryButton} onPress={sendToAlmacenFinal} disabled={!canOperateCxc || isBusy}>
-        <Text style={styles.primaryButtonLabel}>Enviar a Almacén final</Text>
-      </Pressable>
+            <Text style={styles.fieldLabel}>Monto pago</Text>
+            <TextInput
+              value={montoPago}
+              onChangeText={(text) => setMontoPago(formatMontoInput(text))}
+              onBlur={() => setMontoPago((prev) => applyClampMonto(prev))}
+              keyboardType="decimal-pad"
+              style={styles.input}
+              placeholder="0.00"
+            />
 
-      {!canOperateCxc ? (
-        <Text style={styles.hint}>Este pedido ya no está en CTAS X COBRAR, por eso no admite captura CXC.</Text>
+            <Text style={styles.fieldLabel}>Fecha pago (YYYY-MM-DD)</Text>
+            <TextInput
+              value={fechaPago}
+              onChangeText={setFechaPago}
+              style={styles.input}
+              placeholder={getTodayYmd()}
+            />
+
+            <Text style={styles.fieldLabel}>Referencia</Text>
+            <TextInput
+              value={referenciaPago}
+              onChangeText={setReferenciaPago}
+              style={styles.input}
+              placeholder="Referencia"
+            />
+
+            <Text style={styles.fieldLabel}>Notas</Text>
+            <TextInput
+              value={notasPago}
+              onChangeText={setNotasPago}
+              style={[styles.input, styles.textarea]}
+              placeholder="Notas"
+              multiline
+            />
+
+            <Pressable style={styles.primaryButton} onPress={registerPago} disabled={isBusy}>
+              <Text style={styles.primaryButtonLabel}>Registrar pago</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Pagos registrados</Text>
+            {pagos.length === 0 ? (
+              <Text style={styles.hint}>Sin pagos registrados.</Text>
+            ) : (
+              pagos.map((pago) => (
+                <View key={pago.id} style={styles.paymentRow}>
+                  <View style={styles.paymentInfo}>
+                    <Text style={styles.paymentAmount}>{formatMoney(pago.monto)}</Text>
+                    <Text style={styles.paymentMeta}>{pago.fecha_pago}</Text>
+                    <Text style={styles.paymentMeta}>{pago.referencia || 'Sin referencia'}</Text>
+                  </View>
+                  <Pressable
+                    style={styles.deleteButton}
+                    onPress={() => deletePago(pago)}
+                    disabled={isBusy}
+                  >
+                    <Text style={styles.deleteButtonLabel}>Eliminar</Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Historial de surtido (informativo)</Text>
+            {(order.historial_documentos || []).length === 0 ? (
+              <Text style={styles.hint}>Sin registros de historial para documento.</Text>
+            ) : (
+              (order.historial_documentos || []).map((row) => (
+                <View key={row.id_pedido_historial} style={styles.historialRow}>
+                  <Text style={styles.historialMeta}>
+                    Historial #{row.id_pedido_historial} | Subtotal: {formatMoney(row.subtotal_pedido)}
+                  </Text>
+                  <Text style={styles.historialMeta}>Fecha surtido: {formatHistorialDate(row.fecha_surtido)}</Text>
+                  <Text style={styles.historialMeta}>
+                    Documento aplicado: {documentoGlobalAplicado.startsWith('SIN ')
+                      ? row.numero_factura || documentoGlobalAplicado
+                      : documentoGlobalAplicado}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          <Pressable style={styles.primaryButton} onPress={continueFlow} disabled={isBusy}>
+            <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : 'Terminar pedido'}</Text>
+          </Pressable>
+        </>
+      ) : null}
+
+      {!isAuthorizationStage && !isBillingStage ? (
+        <Text style={styles.hint}>Este pedido no está en una fase operable de CXC dentro del flujo actual.</Text>
       ) : null}
 
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}

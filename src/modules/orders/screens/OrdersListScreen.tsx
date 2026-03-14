@@ -18,7 +18,7 @@ import { ApiError } from '../../../shared/api/http';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
-import { OrderMode, WarehouseStage } from '../../../navigation/types';
+import { CxcStage, OrderMode, WarehouseStage } from '../../../navigation/types';
 
 type OrdersListScreenProps = {
   availableModes: OrderMode[];
@@ -26,12 +26,13 @@ type OrdersListScreenProps = {
   onCreateSalesOrder?: () => void;
   initialMode?: OrderMode;
   initialWarehouseStage?: WarehouseStage;
+  initialCxcStage?: CxcStage;
 };
 
 const SALES_STATUS = 10;
-const CXC_STATUS = 20;
-const WAREHOUSE_VALIDATION_STATUS = 30;
-const WAREHOUSE_DELIVERY_STATUS = 45;
+const AUTHORIZATION_STATUS = 20;
+const WAREHOUSE_STATUS = 30;
+const BILLING_STATUS = 45;
 const FINISHED_STATUS = 50;
 
 export function OrdersListScreen({
@@ -40,6 +41,7 @@ export function OrdersListScreen({
   onCreateSalesOrder,
   initialMode,
   initialWarehouseStage,
+  initialCxcStage,
 }: OrdersListScreenProps) {
   const { token } = useAuth();
   const resolvedModes = useMemo<OrderMode[]>(
@@ -54,10 +56,12 @@ export function OrdersListScreen({
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
   const resolvedInitialWarehouseStage = useMemo<WarehouseStage>(
-    () => initialWarehouseStage || 'validation',
+    () => initialWarehouseStage || 'processing',
     [initialWarehouseStage],
   );
   const [warehouseStage, setWarehouseStage] = useState<WarehouseStage>(resolvedInitialWarehouseStage);
+  const resolvedInitialCxcStage = useMemo<CxcStage>(() => initialCxcStage || 'authorization', [initialCxcStage]);
+  const [cxcStage, setCxcStage] = useState<CxcStage>(resolvedInitialCxcStage);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -80,29 +84,35 @@ export function OrdersListScreen({
     }
   }, [initialWarehouseStage]);
 
+  useEffect(() => {
+    if (initialCxcStage) {
+      setCxcStage(initialCxcStage);
+    }
+  }, [initialCxcStage]);
+
   const statusFilter =
     mode === 'sales'
       ? SALES_STATUS
       : mode === 'cxc'
-        ? CXC_STATUS
-      : warehouseStage === 'validation'
-        ? WAREHOUSE_VALIDATION_STATUS
-        : warehouseStage === 'finished'
+        ? cxcStage === 'authorization'
+          ? AUTHORIZATION_STATUS
+          : BILLING_STATUS
+      : warehouseStage === 'finished'
           ? FINISHED_STATUS
-        : WAREHOUSE_DELIVERY_STATUS;
+        : WAREHOUSE_STATUS;
 
   const title = useMemo(
     () =>
       mode === 'sales'
         ? 'Pedidos de Ventas'
         : mode === 'cxc'
-          ? 'Pedidos - Ctas x Cobrar'
-        : warehouseStage === 'validation'
-          ? 'Almacén: Validación'
-          : warehouseStage === 'finished'
+          ? cxcStage === 'authorization'
+            ? 'CXC: Autorización'
+            : 'CXC: Facturación'
+        : warehouseStage === 'finished'
             ? 'Pedidos terminados'
-          : 'Almacén: Ruta y entrega',
-    [mode, warehouseStage],
+            : 'Almacén: Surtido',
+    [cxcStage, mode, warehouseStage],
   );
 
   const modeButtons = useMemo(
@@ -147,6 +157,10 @@ export function OrdersListScreen({
     [statusFilter, token],
   );
 
+  useEffect(() => {
+    fetchOrders(false, '');
+  }, [fetchOrders]);
+
   useFocusEffect(
     useCallback(() => {
       fetchOrders(false, '');
@@ -183,29 +197,16 @@ export function OrdersListScreen({
       {mode === 'warehouse' ? (
         <View style={styles.stageRow}>
           <Pressable
-            style={[styles.stageButton, warehouseStage === 'validation' && styles.stageButtonActive]}
-            onPress={() => setWarehouseStage('validation')}
+            style={[styles.stageButton, warehouseStage === 'processing' && styles.stageButtonActive]}
+            onPress={() => setWarehouseStage('processing')}
           >
             <Text
               style={[
                 styles.stageButtonLabel,
-                warehouseStage === 'validation' && styles.stageButtonLabelActive,
+                warehouseStage === 'processing' && styles.stageButtonLabelActive,
               ]}
             >
-              Validación
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.stageButton, warehouseStage === 'delivery' && styles.stageButtonActive]}
-            onPress={() => setWarehouseStage('delivery')}
-          >
-            <Text
-              style={[
-                styles.stageButtonLabel,
-                warehouseStage === 'delivery' && styles.stageButtonLabelActive,
-              ]}
-            >
-              Ruta / Entrega
+              Surtido
             </Text>
           </Pressable>
           <Pressable
@@ -219,6 +220,37 @@ export function OrdersListScreen({
               ]}
             >
               Terminado
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {mode === 'cxc' ? (
+        <View style={styles.stageRow}>
+          <Pressable
+            style={[styles.stageButton, cxcStage === 'authorization' && styles.stageButtonActive]}
+            onPress={() => setCxcStage('authorization')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                cxcStage === 'authorization' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Autorización
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.stageButton, cxcStage === 'billing' && styles.stageButtonActive]}
+            onPress={() => setCxcStage('billing')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                cxcStage === 'billing' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Facturación
             </Text>
           </Pressable>
         </View>
@@ -267,12 +299,12 @@ export function OrdersListScreen({
                 mode === 'sales'
                   ? 'Ajusta la búsqueda o crea un pedido nuevo desde Ventas.'
                   : mode === 'cxc'
-                    ? 'No hay pedidos pendientes en Ctas x Cobrar.'
+                    ? cxcStage === 'authorization'
+                      ? 'No hay pedidos pendientes de autorización.'
+                      : 'No hay pedidos pendientes de facturación.'
                   : warehouseStage === 'finished'
                     ? 'No hay pedidos en fase Terminado.'
-                  : warehouseStage === 'validation'
-                    ? 'No hay pedidos pendientes de validación de almacén.'
-                    : 'No hay pedidos en almacén final para ruta/entrega.'
+                    : 'No hay pedidos pendientes de surtido en almacén.'
               }
             />
           }

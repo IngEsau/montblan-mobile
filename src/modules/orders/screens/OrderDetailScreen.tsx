@@ -23,7 +23,6 @@ type OrderDetailScreenProps = {
   orderId: number;
   mode: OrderMode;
   onOpenWarehouseCapture: (orderId: number) => void;
-  onOpenWarehouseDelivery: (orderId: number) => void;
   onEditCaptureOrder: (orderId: number) => void;
   onOpenFinishedOrders: () => void;
 };
@@ -32,7 +31,6 @@ export function OrderDetailScreen({
   orderId,
   mode,
   onOpenWarehouseCapture,
-  onOpenWarehouseDelivery,
   onEditCaptureOrder,
   onOpenFinishedOrders,
 }: OrderDetailScreenProps) {
@@ -67,13 +65,9 @@ export function OrderDetailScreen({
     fetchDetail();
   }, [fetchDetail]);
 
-  const canSendToWarehouse = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
+  const canSendToAuthorization = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
   const canCaptureWarehouse = useMemo(
     () => mode === 'warehouse' && order?.status === 30,
-    [mode, order?.status],
-  );
-  const canCaptureWarehouseDelivery = useMemo(
-    () => mode === 'warehouse' && order?.status === 45,
     [mode, order?.status],
   );
   const canOpenFinishedList = useMemo(
@@ -81,15 +75,15 @@ export function OrderDetailScreen({
     [mode, order?.status],
   );
 
-  const sendToWarehouse = async () => {
+  const sendToAuthorization = async () => {
     if (!token || !order || isSending) {
       return;
     }
 
     setIsSending(true);
     try {
-      await ordersApi.transition(token, order.id, 'almacen');
-      Alert.alert('Pedido actualizado', 'El pedido fue enviado a ALMACÉN.');
+      await ordersApi.transition(token, order.id, 'autorizacion');
+      Alert.alert('Pedido actualizado', 'El pedido fue enviado a AUTORIZACIÓN.');
       await fetchDetail();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible enviar el pedido.';
@@ -177,7 +171,7 @@ export function OrderDetailScreen({
         )}
       </View>
 
-      {canSendToWarehouse ? (
+      {canSendToAuthorization ? (
         <Pressable
           style={[styles.actionButton, styles.actionButtonEdit]}
           onPress={() => onEditCaptureOrder(order.id)}
@@ -186,9 +180,13 @@ export function OrderDetailScreen({
         </Pressable>
       ) : null}
 
-      {canSendToWarehouse ? (
-        <Pressable style={styles.actionButton} onPress={sendToWarehouse} disabled={isSending}>
-          <Text style={styles.actionLabel}>{isSending ? 'Enviando...' : 'Enviar a Almacén'}</Text>
+      {canSendToAuthorization ? (
+        <Pressable
+          style={styles.actionButton}
+          onPress={sendToAuthorization}
+          disabled={isSending}
+        >
+          <Text style={styles.actionLabel}>{isSending ? 'Enviando...' : 'Enviar a Autorización'}</Text>
         </Pressable>
       ) : null}
 
@@ -197,16 +195,7 @@ export function OrderDetailScreen({
           style={[styles.actionButton, styles.actionButtonWarehouse]}
           onPress={() => onOpenWarehouseCapture(order.id)}
         >
-          <Text style={styles.actionLabel}>Capturar Almacén</Text>
-        </Pressable>
-      ) : null}
-
-      {canCaptureWarehouseDelivery ? (
-        <Pressable
-          style={[styles.actionButton, styles.actionButtonDelivery]}
-          onPress={() => onOpenWarehouseDelivery(order.id)}
-        >
-          <Text style={styles.actionLabel}>Capturar ruta y entrega</Text>
+          <Text style={styles.actionLabel}>Capturar surtido</Text>
         </Pressable>
       ) : null}
 
