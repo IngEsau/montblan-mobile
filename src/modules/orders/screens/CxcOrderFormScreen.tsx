@@ -64,6 +64,10 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. recibo simple' : 'No. factura'),
     [order?.tipo_fac_rem],
   );
+  const stageLabel = useMemo(
+    () => (isAuthorizationStage ? 'AUTORIZACION' : isBillingStage ? 'FACTURACION' : 'CXC'),
+    [isAuthorizationStage, isBillingStage],
+  );
   const documentoGlobalAplicado = useMemo(() => {
     if (!order) {
       return 'SIN DOCUMENTO GLOBAL';
@@ -72,6 +76,37 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     const current = (order.no_factura || '').trim();
     return current || ((order.tipo_fac_rem ?? 10) === 20 ? 'SIN RECIBO SIMPLE' : 'SIN FACTURA');
   }, [order]);
+  const documentoGuardado = useMemo(() => Boolean((order?.no_factura || '').trim()), [order?.no_factura]);
+  const noPedidoVisible = useMemo(() => {
+    const noPedido = (order?.no_pedido || '').trim();
+    if (noPedido) {
+      return noPedido;
+    }
+
+    return isBillingStage ? 'Se asignará al guardar el documento final' : 'Pendiente hasta facturación';
+  }, [isBillingStage, order?.no_pedido]);
+  const cxcNotes = useMemo(
+    () =>
+      [
+        {
+          label: 'Condiciones',
+          value: order?.cliente_condiciones || 'Sin condiciones registradas',
+        },
+        {
+          label: 'Observaciones',
+          value: order?.observaciones || 'Sin observaciones',
+        },
+        {
+          label: 'Instrucciones para Crédito',
+          value: order?.instrucciones_credito || 'Sin instrucciones para Crédito',
+        },
+        {
+          label: 'Instrucciones para Almacén',
+          value: order?.instrucciones_almacen || 'Sin instrucciones para Almacén',
+        },
+      ].filter((item) => item.value),
+    [order?.cliente_condiciones, order?.instrucciones_almacen, order?.instrucciones_credito, order?.observaciones],
+  );
 
   const applyClampMonto = useCallback(
     (raw: string) => {
@@ -272,25 +307,75 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Tipo: {order.tipo_fac_rem_label || '-'}</Text>
 
+      <View style={styles.card}>
+        <View style={styles.stageHeader}>
+          <View style={[styles.stageBadge, isAuthorizationStage ? styles.stageBadgeAuthorization : styles.stageBadgeBilling]}>
+            <Text style={[styles.stageBadgeLabel, isAuthorizationStage ? styles.stageBadgeLabelAuthorization : styles.stageBadgeLabelBilling]}>
+              {stageLabel}
+            </Text>
+          </View>
+          <Text style={styles.stageHelper}>
+            {isAuthorizationStage
+              ? 'CXC valida el pedido y lo libera a almacén.'
+              : 'CXC registra el documento final, pagos y cierre del flujo.'}
+          </Text>
+        </View>
+
+        <View style={styles.amountsRow}>
+          <View style={styles.amountItem}>
+            <Text style={styles.amountLabel}>Subtotal</Text>
+            <Text style={styles.amountValue}>{formatMoney(order.subtotal)}</Text>
+          </View>
+          <View style={styles.amountItem}>
+            <Text style={styles.amountLabel}>IVA</Text>
+            <Text style={styles.amountValue}>{formatMoney(order.iva)}</Text>
+          </View>
+          <View style={styles.amountItem}>
+            <Text style={styles.amountLabel}>Total</Text>
+            <Text style={styles.amountValue}>{formatMoney(order.total)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.summaryGrid}>
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>No. pedido</Text>
+            <Text style={styles.summaryValue}>{noPedidoVisible}</Text>
+          </View>
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>{documentFieldLabel}</Text>
+            <Text style={styles.summaryValue}>{documentoGlobalAplicado}</Text>
+          </View>
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>Cobranza</Text>
+            <Text style={styles.summaryValue}>{totals.cobranza_status}</Text>
+          </View>
+          <View style={styles.summaryCell}>
+            <Text style={styles.summaryLabel}>Pagos registrados</Text>
+            <Text style={styles.summaryValue}>{pagos.length}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Contexto del pedido</Text>
+        {cxcNotes.map((item) => (
+          <View key={item.label} style={styles.noteRow}>
+            <Text style={styles.noteLabel}>{item.label}</Text>
+            <Text style={styles.noteValue}>{item.value}</Text>
+          </View>
+        ))}
+      </View>
+
       {isAuthorizationStage ? (
         <>
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Autorización del pedido</Text>
-            <Text style={styles.meta}>En esta fase CXC valida el pedido y lo libera para surtido en almacén.</Text>
-            <View style={styles.amountsRow}>
-              <View style={styles.amountItem}>
-                <Text style={styles.amountLabel}>Subtotal</Text>
-                <Text style={styles.amountValue}>{formatMoney(order.subtotal)}</Text>
-              </View>
-              <View style={styles.amountItem}>
-                <Text style={styles.amountLabel}>IVA</Text>
-                <Text style={styles.amountValue}>{formatMoney(order.iva)}</Text>
-              </View>
-              <View style={styles.amountItem}>
-                <Text style={styles.amountLabel}>Total</Text>
-                <Text style={styles.amountValue}>{formatMoney(order.total)}</Text>
-              </View>
-            </View>
+            <Text style={styles.meta}>
+              Revisa condiciones comerciales, observaciones y tipo de comprobante antes de enviarlo a almacén.
+            </Text>
+            <Text style={styles.hint}>
+              En esta fase todavía no se registra documento final ni pagos. Es una liberación operativa de CXC.
+            </Text>
           </View>
 
           <Pressable style={styles.primaryButton} onPress={continueFlow} disabled={isBusy}>
@@ -310,6 +395,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               style={styles.input}
               placeholder={isFactura ? 'Ingrese el número de factura' : 'Ingrese el número de recibo simple'}
             />
+            <Text style={styles.hint}>
+              Al guardar el documento final, el sistema sincroniza ese folio como número visible del pedido.
+            </Text>
             <Pressable style={styles.secondaryButton} onPress={saveDocumentoGlobal} disabled={isBusy}>
               <Text style={styles.secondaryButtonLabel}>Guardar documento</Text>
             </Pressable>
@@ -418,7 +506,17 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             )}
           </View>
 
-          <Pressable style={styles.primaryButton} onPress={continueFlow} disabled={isBusy}>
+          {!documentoGuardado ? (
+            <Text style={styles.warningText}>
+              Debes guardar el documento final antes de poder terminar el pedido.
+            </Text>
+          ) : null}
+
+          <Pressable
+            style={[styles.primaryButton, !documentoGuardado && styles.primaryButtonDisabled]}
+            onPress={continueFlow}
+            disabled={isBusy || !documentoGuardado}
+          >
             <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : 'Terminar pedido'}</Text>
           </Pressable>
         </>
@@ -473,10 +571,82 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 8,
   },
+  stageHeader: {
+    marginBottom: 10,
+  },
+  stageBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 8,
+  },
+  stageBadgeAuthorization: {
+    backgroundColor: '#fff3d9',
+  },
+  stageBadgeBilling: {
+    backgroundColor: '#def3ee',
+  },
+  stageBadgeLabel: {
+    fontFamily: typography.bold,
+    fontSize: 11,
+  },
+  stageBadgeLabelAuthorization: {
+    color: '#9a6200',
+  },
+  stageBadgeLabelBilling: {
+    color: palette.primaryDark,
+  },
+  stageHelper: {
+    color: palette.text,
+    fontFamily: typography.medium,
+    fontSize: 13,
+  },
   meta: {
     color: palette.mutedText,
     fontFamily: typography.regular,
     marginBottom: 8,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  summaryCell: {
+    width: '48%',
+    borderRadius: 10,
+    backgroundColor: '#f7fafc',
+    borderWidth: 1,
+    borderColor: '#e7eef5',
+    padding: 10,
+  },
+  summaryLabel: {
+    color: palette.mutedText,
+    fontFamily: typography.medium,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  summaryValue: {
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 13,
+  },
+  noteRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#ecf1f6',
+    paddingTop: 8,
+    marginTop: 8,
+  },
+  noteLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  noteValue: {
+    color: palette.text,
+    fontFamily: typography.regular,
+    fontSize: 13,
   },
   fieldLabel: {
     color: palette.mutedText,
@@ -542,6 +712,9 @@ const styles = StyleSheet.create({
     fontFamily: typography.semiBold,
     fontSize: 14,
   },
+  primaryButtonDisabled: {
+    backgroundColor: '#a8c8c0',
+  },
   secondaryButton: {
     marginTop: 10,
     backgroundColor: palette.navy,
@@ -603,6 +776,12 @@ const styles = StyleSheet.create({
   error: {
     marginTop: 12,
     color: palette.danger,
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  warningText: {
+    marginTop: 12,
+    color: '#9a6200',
     fontFamily: typography.medium,
     fontSize: 12,
   },
