@@ -69,6 +69,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [instruccionesCredito, setInstruccionesCredito] = useState('');
   const [instruccionesAlmacen, setInstruccionesAlmacen] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
+  const [showOptionalFields, setShowOptionalFields] = useState(false);
+  const [showProductDetails, setShowProductDetails] = useState(false);
+  const [showAllLines, setShowAllLines] = useState(false);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
   const [isLookingUpPostalCode, setIsLookingUpPostalCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -113,6 +116,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setObservaciones(item.observaciones || '');
         setInstruccionesCredito(item.instrucciones_credito || '');
         setInstruccionesAlmacen(item.instrucciones_almacen || '');
+        setShowOptionalFields(Boolean(item.cliente_correo || item.cliente_rfc || item.uso_cfdi));
+        setShowProductDetails(Boolean(item.detalle.some((line) => line.observaciones)));
         setCodigoPostal(item.direccion?.codigo_postal || '');
         setDireccion(item.direccion?.direccion || '');
         setNumInt(item.direccion?.num_int || '');
@@ -448,6 +453,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     [lines],
   );
 
+  const visibleLines = useMemo(() => {
+    if (showAllLines) {
+      return linesWithAvailability;
+    }
+
+    return linesWithAvailability.slice(0, 4);
+  }, [linesWithAvailability, showAllLines]);
+
   const removeLine = (lineId: string) => {
     setLines((prev) => prev.filter((line) => line.id !== lineId));
   };
@@ -613,220 +626,270 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     );
   }
 
-    return (
+  return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{isEditMode ? 'Editar pedido de venta' : 'Nuevo pedido de venta'}</Text>
 
-      <Text style={styles.label}>Cliente</Text>
-      <Pressable
-        style={styles.selector}
-        onPress={() => {
-          setClienteSearch('');
-          setClienteModalOpen(true);
-        }}
-      >
-        <Text style={styles.selectorValue}>
-          {selectedCliente
-            ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
-            : 'Seleccionar cliente'}
-        </Text>
-      </Pressable>
-
-      <Text style={styles.label}>No pedido</Text>
-      <TextInput
-        value={noPedido}
-        onChangeText={setNoPedido}
-        placeholder="Ej. 1001"
-        style={styles.input}
-        autoCapitalize="none"
-      />
-
-      <Text style={styles.label}>Tipo de comprobante</Text>
-      <View style={styles.toggleRow}>
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Datos principales</Text>
+        <Text style={styles.label}>Cliente</Text>
         <Pressable
-          style={[styles.toggleButton, tipoComprobante === 10 && styles.toggleButtonActive]}
-          onPress={() => setTipoComprobante(10)}
-        >
-          <Text style={[styles.toggleLabel, tipoComprobante === 10 && styles.toggleLabelActive]}>Factura</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.toggleButton, tipoComprobante === 20 && styles.toggleButtonActive]}
-          onPress={() => setTipoComprobante(20)}
-        >
-          <Text style={[styles.toggleLabel, tipoComprobante === 20 && styles.toggleLabelActive]}>Recibo simple</Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.label}>Condiciones</Text>
-      <TextInput
-        value={clienteCondiciones}
-        onChangeText={setClienteCondiciones}
-        placeholder="Ej. Crédito 15 días / Contado"
-        style={styles.input}
-      />
-
-      <Text style={styles.label}>Correo cliente (opcional)</Text>
-      <TextInput
-        value={clienteCorreo}
-        onChangeText={setClienteCorreo}
-        placeholder="correo@dominio.com"
-        style={styles.input}
-        autoCapitalize="none"
-      />
-
-      <Text style={styles.label}>RFC cliente (opcional)</Text>
-      <TextInput
-        value={clienteRfc}
-        onChangeText={setClienteRfc}
-        placeholder="XAXX010101000"
-        style={styles.input}
-        autoCapitalize="characters"
-      />
-
-      <Text style={styles.label}>Uso CFDI (opcional)</Text>
-      <TextInput
-        value={usoCfdi}
-        onChangeText={setUsoCfdi}
-        placeholder="Ej. G03"
-        style={styles.input}
-        autoCapitalize="characters"
-      />
-
-      <Text style={styles.label}>C.P. (opcional)</Text>
-      <TextInput
-        value={codigoPostal}
-        onChangeText={handleCodigoPostalChange}
-        onBlur={handleCodigoPostalBlur}
-        placeholder="Ej. 77500"
-        style={styles.input}
-        keyboardType="number-pad"
-      />
-      {isLookingUpPostalCode ? <Text style={styles.helper}>Buscando datos de C.P...</Text> : null}
-
-      <View style={styles.lineRow}>
-        <View style={styles.lineInputWrap}>
-          <Text style={styles.label}>Estado</Text>
-          <Pressable
-            style={styles.selector}
-            onPress={() => setEstadoModalOpen(true)}
-            disabled={estadosDisponibles.length === 0}
-          >
-            <Text style={styles.selectorValue}>
-              {estadoSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar estado' : 'Sin datos por C.P.')}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={styles.lineInputWrap}>
-          <Text style={styles.label}>Deleg./Mpio.</Text>
-          <Pressable
-            style={styles.selector}
-            onPress={() => setMunicipioModalOpen(true)}
-            disabled={municipiosDisponibles.length === 0}
-          >
-            <Text style={styles.selectorValue}>
-              {municipioSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar municipio' : 'Sin datos por C.P.')}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <Text style={styles.label}>Colonia</Text>
-      <Pressable
-        style={styles.selector}
-        onPress={() => setColoniaModalOpen(true)}
-        disabled={coloniasDisponibles.length === 0}
-      >
-        <Text style={styles.selectorValue}>
-          {coloniaSeleccionada?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar colonia' : 'Sin datos por C.P.')}
-        </Text>
-      </Pressable>
-
-      <Text style={styles.label}>Dirección</Text>
-      <TextInput
-        value={direccion}
-        onChangeText={setDireccion}
-        placeholder="Calle y número"
-        style={styles.input}
-      />
-
-      <View style={styles.lineRow}>
-        <View style={styles.lineInputWrap}>
-          <Text style={styles.label}>No int</Text>
-          <TextInput
-            value={numInt}
-            onChangeText={setNumInt}
-            placeholder="Ej. 12"
-            style={styles.input}
-          />
-        </View>
-        <View style={styles.lineInputWrap}>
-          <Text style={styles.label}>No ext</Text>
-          <TextInput
-            value={numExt}
-            onChangeText={setNumExt}
-            placeholder="Ej. A"
-            style={styles.input}
-          />
-        </View>
-      </View>
-
-      <Text style={styles.label}>Referencia dirección (opcional)</Text>
-      <TextInput
-        value={referenciaDireccion}
-        onChangeText={setReferenciaDireccion}
-        placeholder="Entre calles, puntos de referencia, etc."
-        style={[styles.input, styles.textarea]}
-        multiline
-      />
-
-      <Text style={styles.label}>Observaciones</Text>
-      <TextInput
-        value={observaciones}
-        onChangeText={setObservaciones}
-        placeholder="Notas del pedido"
-        style={[styles.input, styles.textarea]}
-        multiline
-      />
-
-      <Text style={styles.label}>Instrucciones para Crédito</Text>
-      <TextInput
-        value={instruccionesCredito}
-        onChangeText={setInstruccionesCredito}
-        placeholder="Ej. no facturar arriba de cierto monto"
-        style={[styles.input, styles.textarea]}
-        multiline
-      />
-
-      <Text style={styles.label}>Instrucciones para Almacén</Text>
-      <TextInput
-        value={instruccionesAlmacen}
-        onChangeText={setInstruccionesAlmacen}
-        placeholder="Ej. material con corte / ruta sugerida"
-        style={[styles.input, styles.textarea]}
-        multiline
-      />
-
-      <Text style={styles.label}>Vendedor</Text>
-      <View style={styles.selector}>
-        <Text style={styles.selectorValue}>{vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}</Text>
-      </View>
-      <Text style={styles.helper}>
-        {selectedCliente?.asignado_a_id
-          ? 'El vendedor se toma del cliente asignado en catálogo.'
-          : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
-      </Text>
-
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Productos</Text>
-        <Pressable
-          style={styles.smallButton}
+          style={styles.selector}
           onPress={() => {
-            setProductoSearch('');
-            setProductoModalOpen(true);
+            setClienteSearch('');
+            setClienteModalOpen(true);
           }}
         >
-          <Text style={styles.smallButtonLabel}>+ Agregar</Text>
+          <Text style={styles.selectorValue}>
+            {selectedCliente
+              ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
+              : 'Seleccionar cliente'}
+          </Text>
         </Pressable>
+
+        <View style={styles.lineRow}>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>No pedido</Text>
+            <TextInput
+              value={noPedido}
+              onChangeText={setNoPedido}
+              placeholder="Ej. 1001"
+              style={styles.input}
+              autoCapitalize="none"
+            />
+          </View>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>Tipo de comprobante</Text>
+            <View style={[styles.toggleRow, styles.toggleRowCompact]}>
+              <Pressable
+                style={[styles.toggleButton, tipoComprobante === 10 && styles.toggleButtonActive]}
+                onPress={() => setTipoComprobante(10)}
+              >
+                <Text style={[styles.toggleLabel, tipoComprobante === 10 && styles.toggleLabelActive]}>Factura</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.toggleButton, tipoComprobante === 20 && styles.toggleButtonActive]}
+                onPress={() => setTipoComprobante(20)}
+              >
+                <Text style={[styles.toggleLabel, tipoComprobante === 20 && styles.toggleLabelActive]}>
+                  Recibo simple
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.label}>Condiciones</Text>
+        <TextInput
+          value={clienteCondiciones}
+          onChangeText={setClienteCondiciones}
+          placeholder="Ej. Crédito 15 días / Contado"
+          style={styles.input}
+        />
+
+        <View style={styles.inlineInfoCard}>
+          <View style={styles.inlineInfoBlock}>
+            <Text style={styles.infoTitle}>Vendedor</Text>
+            <Text style={styles.infoValue}>
+              {vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}
+            </Text>
+          </View>
+          <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
+            <Text style={styles.inlineToggleLabel}>
+              {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.helper}>
+          {selectedCliente?.asignado_a_id
+            ? 'El vendedor se toma del cliente asignado en catálogo.'
+            : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
+        </Text>
+
+        {showOptionalFields ? (
+          <>
+            <View style={styles.lineRow}>
+              <View style={styles.lineInputWrap}>
+                <Text style={styles.label}>Correo cliente</Text>
+                <TextInput
+                  value={clienteCorreo}
+                  onChangeText={setClienteCorreo}
+                  placeholder="correo@dominio.com"
+                  style={styles.input}
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={styles.lineInputWrap}>
+                <Text style={styles.label}>Uso CFDI</Text>
+                <TextInput
+                  value={usoCfdi}
+                  onChangeText={setUsoCfdi}
+                  placeholder="Ej. G03"
+                  style={styles.input}
+                  autoCapitalize="characters"
+                />
+              </View>
+            </View>
+            <Text style={styles.label}>RFC cliente</Text>
+            <TextInput
+              value={clienteRfc}
+              onChangeText={setClienteRfc}
+              placeholder="XAXX010101000"
+              style={styles.input}
+              autoCapitalize="characters"
+            />
+          </>
+        ) : null}
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Ubicación</Text>
+        <View style={styles.lineRow}>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>C.P.</Text>
+            <TextInput
+              value={codigoPostal}
+              onChangeText={handleCodigoPostalChange}
+              onBlur={handleCodigoPostalBlur}
+              placeholder="Ej. 77500"
+              style={styles.input}
+              keyboardType="number-pad"
+            />
+          </View>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>Colonia</Text>
+            <Pressable
+              style={styles.selector}
+              onPress={() => setColoniaModalOpen(true)}
+              disabled={coloniasDisponibles.length === 0}
+            >
+              <Text style={styles.selectorValue}>
+                {coloniaSeleccionada?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar colonia' : 'Sin datos')}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+        {isLookingUpPostalCode ? <Text style={styles.helper}>Buscando datos de C.P...</Text> : null}
+
+        <View style={styles.lineRow}>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>Estado</Text>
+            <Pressable
+              style={styles.selector}
+              onPress={() => setEstadoModalOpen(true)}
+              disabled={estadosDisponibles.length === 0}
+            >
+              <Text style={styles.selectorValue}>
+                {estadoSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar estado' : 'Sin datos')}
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>Deleg./Mpio.</Text>
+            <Pressable
+              style={styles.selector}
+              onPress={() => setMunicipioModalOpen(true)}
+              disabled={municipiosDisponibles.length === 0}
+            >
+              <Text style={styles.selectorValue}>
+                {municipioSeleccionado?.nombre ||
+                  (codigoPostalRows.length > 0 ? 'Seleccionar municipio' : 'Sin datos')}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <Text style={styles.label}>Dirección</Text>
+        <TextInput
+          value={direccion}
+          onChangeText={setDireccion}
+          placeholder="Calle y número"
+          style={styles.input}
+        />
+
+        <View style={styles.lineRow}>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>No int</Text>
+            <TextInput value={numInt} onChangeText={setNumInt} placeholder="Ej. 12" style={styles.input} />
+          </View>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>No ext</Text>
+            <TextInput value={numExt} onChangeText={setNumExt} placeholder="Ej. A" style={styles.input} />
+          </View>
+        </View>
+
+        <Text style={styles.label}>Referencia dirección</Text>
+        <TextInput
+          value={referenciaDireccion}
+          onChangeText={setReferenciaDireccion}
+          placeholder="Entre calles, puntos de referencia, etc."
+          style={[styles.input, styles.textareaCompact]}
+          multiline
+        />
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Indicaciones</Text>
+        <Text style={styles.label}>Observaciones</Text>
+        <TextInput
+          value={observaciones}
+          onChangeText={setObservaciones}
+          placeholder="Notas del pedido"
+          style={[styles.input, styles.textareaCompact]}
+          multiline
+        />
+
+        <View style={styles.lineRow}>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>Instrucciones para Crédito</Text>
+            <TextInput
+              value={instruccionesCredito}
+              onChangeText={setInstruccionesCredito}
+              placeholder="Ej. no facturar arriba de cierto monto"
+              style={[styles.input, styles.textareaCompact]}
+              multiline
+            />
+          </View>
+          <View style={styles.lineInputWrap}>
+            <Text style={styles.label}>Instrucciones para Almacén</Text>
+            <TextInput
+              value={instruccionesAlmacen}
+              onChangeText={setInstruccionesAlmacen}
+              placeholder="Ej. material con corte / ruta sugerida"
+              style={[styles.input, styles.textareaCompact]}
+              multiline
+            />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Productos</Text>
+          {lines.length > 0 ? (
+            <Text style={styles.sectionMeta}>
+              Mostrando {visibleLines.length} de {lines.length} productos
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.sectionActions}>
+          {lines.length > 0 ? (
+            <Pressable style={styles.secondarySmallButton} onPress={() => setShowProductDetails((prev) => !prev)}>
+              <Text style={styles.secondarySmallButtonLabel}>
+                {showProductDetails ? 'Ocultar observaciones' : 'Editar observaciones'}
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            style={styles.smallButton}
+            onPress={() => {
+              setProductoSearch('');
+              setProductoModalOpen(true);
+            }}
+          >
+            <Text style={styles.smallButtonLabel}>+ Agregar</Text>
+          </Pressable>
+        </View>
       </View>
 
       {lines.length === 0 ? (
@@ -834,13 +897,16 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <Text style={styles.emptyLinesText}>Aún no has agregado productos.</Text>
         </View>
       ) : (
-        linesWithAvailability.map((line) => (
+        visibleLines.map((line) => (
           <View key={line.id} style={styles.lineCard}>
             <View style={styles.lineTopRow}>
               <Text style={styles.lineCode}>{line.codigo}</Text>
-              <Pressable onPress={() => removeLine(line.id)}>
-                <Text style={styles.removeLine}>Eliminar</Text>
-              </Pressable>
+              <View style={styles.lineActions}>
+                <Text style={styles.lineImporteCompact}>{formatMoney(Number(line.cantidad || 0) * Number(line.precio || 0))}</Text>
+                <Pressable onPress={() => removeLine(line.id)}>
+                  <Text style={styles.removeLine}>Eliminar</Text>
+                </Pressable>
+              </View>
             </View>
             <Text style={styles.lineName}>{line.nombre}</Text>
             <Text style={[styles.inventorySummary, line.disponibilidadInsuficiente && styles.inventoryWarning]}>
@@ -867,23 +933,30 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 />
               </View>
             </View>
-            <Text style={styles.lineImporte}>
-              Importe: {formatMoney(Number(line.cantidad || 0) * Number(line.precio || 0))}
-            </Text>
             {line.disponibilidadInsuficiente ? (
               <Text style={styles.inventoryWarning}>La cantidad solicitada supera el inventario disponible.</Text>
             ) : null}
-            <Text style={styles.lineLabel}>Observaciones por partida</Text>
-            <TextInput
-              value={line.observaciones}
-              onChangeText={(value) => updateLine(line.id, 'observaciones', value)}
-              placeholder="Indicaciones específicas para esta partida"
-              style={[styles.lineInput, styles.lineTextarea]}
-              multiline
-            />
+            {showProductDetails || line.observaciones ? (
+              <>
+                <Text style={styles.lineLabel}>Observaciones por partida</Text>
+                <TextInput
+                  value={line.observaciones}
+                  onChangeText={(value) => updateLine(line.id, 'observaciones', value)}
+                  placeholder="Indicaciones específicas para esta partida"
+                  style={[styles.lineInput, styles.lineTextarea]}
+                  multiline
+                />
+              </>
+            ) : null}
           </View>
         ))
       )}
+
+      {lines.length > 4 ? (
+        <Pressable style={styles.expandLinesButton} onPress={() => setShowAllLines((prev) => !prev)}>
+          <Text style={styles.expandLinesLabel}>{showAllLines ? 'Ver menos productos' : 'Ver más productos'}</Text>
+        </Pressable>
+      ) : null}
 
       <View style={styles.totalsCard}>
         <Text style={styles.totalLine}>Subtotal: {formatMoney(totals.subtotal)}</Text>
@@ -1114,10 +1187,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  sectionCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+  },
   sectionTitle: {
     color: palette.navy,
     fontFamily: typography.semiBold,
     fontSize: 16,
+  },
+  sectionMeta: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   smallButton: {
     backgroundColor: palette.navy,
@@ -1129,6 +1221,17 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: typography.semiBold,
     fontSize: 12,
+  },
+  secondarySmallButton: {
+    backgroundColor: '#eef5fb',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  secondarySmallButtonLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 11,
   },
   emptyLines: {
     borderWidth: 1,
@@ -1156,6 +1259,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 2,
+  },
+  lineActions: {
+    alignItems: 'flex-end',
+    gap: 2,
   },
   lineCode: {
     color: palette.navy,
@@ -1201,15 +1308,65 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
   },
   lineTextarea: {
-    minHeight: 76,
+    minHeight: 64,
     marginTop: 6,
     textAlignVertical: 'top',
   },
-  lineImporte: {
-    marginTop: 8,
+  lineImporteCompact: {
     color: palette.primaryDark,
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  inlineInfoCard: {
+    backgroundColor: '#f7fafc',
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  inlineInfoBlock: {
+    flex: 1,
+  },
+  infoTitle: {
+    color: palette.mutedText,
+    fontFamily: typography.medium,
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  infoValue: {
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 13,
+  },
+  inlineToggleButton: {
+    justifyContent: 'center',
+  },
+  inlineToggleLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+  },
+  textareaCompact: {
+    minHeight: 58,
+    textAlignVertical: 'top',
+  },
+  toggleRowCompact: {
+    marginBottom: 0,
+  },
+  expandLinesButton: {
+    alignSelf: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  expandLinesLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
   },
   inventoryWarning: {
     color: palette.danger,
