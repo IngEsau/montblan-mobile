@@ -27,6 +27,9 @@ type DraftLine = {
   cantidad: string;
   descripcion: string;
   observaciones: string;
+  inventarioSa: number | null;
+  inventarioCmb: number | null;
+  inventarioDisponible: number | null;
 };
 
 type SalesOrderFormScreenProps = {
@@ -70,6 +73,12 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [isLookingUpPostalCode, setIsLookingUpPostalCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null) => {
+    const sa = inventarioSa !== null ? Number(inventarioSa) : 0;
+    const cmb = inventarioCmb !== null ? Number(inventarioCmb) : 0;
+    return Number((sa + cmb).toFixed(4));
+  }, []);
 
   const loadFormData = useCallback(async () => {
     if (!token) {
@@ -155,6 +164,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               cantidad: String(line.cantidad || 0),
               descripcion: line.descripcion || lineName,
               observaciones: line.observaciones || '',
+              inventarioSa: line.inventario_sa ?? catalogProduct?.inventario_sa ?? null,
+              inventarioCmb: line.inventario_cmb ?? catalogProduct?.inventario_cmb ?? null,
+              inventarioDisponible:
+                line.inventario_disponible ??
+                getInventarioDisponible(
+                  line.inventario_sa ?? catalogProduct?.inventario_sa ?? null,
+                  line.inventario_cmb ?? catalogProduct?.inventario_cmb ?? null,
+                ),
             };
           }),
         );
@@ -170,7 +187,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     } finally {
       setLoadingCatalogs(false);
     }
-  }, [isEditMode, orderId, token]);
+  }, [getInventarioDisponible, isEditMode, orderId, token]);
 
   useEffect(() => {
     loadFormData();
@@ -361,6 +378,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       cantidad: '1',
       descripcion: producto.nombre || producto.codigo,
       observaciones: '',
+      inventarioSa: producto.inventario_sa ?? null,
+      inventarioCmb: producto.inventario_cmb ?? null,
+      inventarioDisponible:
+        producto.inventario_disponible ??
+        getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null),
     };
 
     setLines((prev) => [...prev, line]);
@@ -406,6 +428,25 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
     return user?.username || 'movil';
   }, [isEditMode, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
+
+  const linesWithAvailability = useMemo(
+    () =>
+      lines.map((line) => {
+        const cantidad = Number(line.cantidad || 0);
+        const inventarioDisponible = line.inventarioDisponible;
+        const disponibilidadInsuficiente =
+          inventarioDisponible !== null &&
+          Number.isFinite(cantidad) &&
+          cantidad > 0 &&
+          cantidad > inventarioDisponible;
+
+        return {
+          ...line,
+          disponibilidadInsuficiente,
+        };
+      }),
+    [lines],
+  );
 
   const removeLine = (lineId: string) => {
     setLines((prev) => prev.filter((line) => line.id !== lineId));
@@ -793,7 +834,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <Text style={styles.emptyLinesText}>Aún no has agregado productos.</Text>
         </View>
       ) : (
-        lines.map((line) => (
+        linesWithAvailability.map((line) => (
           <View key={line.id} style={styles.lineCard}>
             <View style={styles.lineTopRow}>
               <Text style={styles.lineCode}>{line.codigo}</Text>
@@ -802,6 +843,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               </Pressable>
             </View>
             <Text style={styles.lineName}>{line.nombre}</Text>
+            <Text style={[styles.inventorySummary, line.disponibilidadInsuficiente && styles.inventoryWarning]}>
+              Inv. disponible: {line.inventarioDisponible ?? 0} | SA: {line.inventarioSa ?? 0} | CMB: {line.inventarioCmb ?? 0}
+            </Text>
 
             <View style={styles.lineRow}>
               <View style={styles.lineInputWrap}>
@@ -826,6 +870,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <Text style={styles.lineImporte}>
               Importe: {formatMoney(Number(line.cantidad || 0) * Number(line.precio || 0))}
             </Text>
+            {line.disponibilidadInsuficiente ? (
+              <Text style={styles.inventoryWarning}>La cantidad solicitada supera el inventario disponible.</Text>
+            ) : null}
             <Text style={styles.lineLabel}>Observaciones por partida</Text>
             <TextInput
               value={line.observaciones}
@@ -898,6 +945,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.modalItemTitle}>{producto.codigo}</Text>
                 <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
                 <Text style={styles.modalItemPrice}>{formatMoney(producto.precio_venta)}</Text>
+                <Text style={styles.modalItemMeta}>
+                  Inv. disponible: {producto.inventario_disponible ?? getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
+                </Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -1122,6 +1172,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     marginBottom: 8,
   },
+  inventorySummary: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    marginBottom: 8,
+  },
   lineRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1154,6 +1210,12 @@ const styles = StyleSheet.create({
     color: palette.primaryDark,
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  inventoryWarning: {
+    color: palette.danger,
+    fontFamily: typography.medium,
+    fontSize: 12,
+    marginTop: 6,
   },
   totalsCard: {
     borderRadius: 12,
@@ -1224,6 +1286,12 @@ const styles = StyleSheet.create({
   modalItemPrice: {
     color: palette.primaryDark,
     fontFamily: typography.semiBold,
+    marginTop: 4,
+  },
+  modalItemMeta: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 11,
     marginTop: 4,
   },
   modalCloseButton: {

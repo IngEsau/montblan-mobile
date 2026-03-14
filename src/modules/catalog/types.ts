@@ -28,6 +28,7 @@ export type Producto = {
   precio_venta: number;
   inventario_sa: number | null;
   inventario_cmb: number | null;
+  inventario_disponible?: number | null;
 };
 
 export type CodigoPostalEstado = {
