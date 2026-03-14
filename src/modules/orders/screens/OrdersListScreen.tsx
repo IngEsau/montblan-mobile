@@ -34,6 +34,7 @@ const AUTHORIZATION_STATUS = 20;
 const WAREHOUSE_STATUS = 30;
 const BILLING_STATUS = 45;
 const FINISHED_STATUS = 50;
+const VISIBLE_STATUSES = [SALES_STATUS, AUTHORIZATION_STATUS, WAREHOUSE_STATUS, BILLING_STATUS, FINISHED_STATUS];
 
 export function OrdersListScreen({
   availableModes,
@@ -56,11 +57,11 @@ export function OrdersListScreen({
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
   const [search, setSearch] = useState('');
   const resolvedInitialWarehouseStage = useMemo<WarehouseStage>(
-    () => initialWarehouseStage || 'processing',
+    () => initialWarehouseStage || 'all',
     [initialWarehouseStage],
   );
   const [warehouseStage, setWarehouseStage] = useState<WarehouseStage>(resolvedInitialWarehouseStage);
-  const resolvedInitialCxcStage = useMemo<CxcStage>(() => initialCxcStage || 'authorization', [initialCxcStage]);
+  const resolvedInitialCxcStage = useMemo<CxcStage>(() => initialCxcStage || 'all', [initialCxcStage]);
   const [cxcStage, setCxcStage] = useState<CxcStage>(resolvedInitialCxcStage);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -92,14 +93,18 @@ export function OrdersListScreen({
 
   const statusFilter =
     mode === 'sales'
-      ? SALES_STATUS
+      ? undefined
       : mode === 'cxc'
         ? cxcStage === 'authorization'
           ? AUTHORIZATION_STATUS
-          : BILLING_STATUS
-      : warehouseStage === 'finished'
-          ? FINISHED_STATUS
-        : WAREHOUSE_STATUS;
+          : cxcStage === 'billing'
+            ? BILLING_STATUS
+            : undefined
+        : warehouseStage === 'processing'
+          ? WAREHOUSE_STATUS
+          : warehouseStage === 'finished'
+            ? FINISHED_STATUS
+            : undefined;
 
   const title = useMemo(
     () =>
@@ -108,10 +113,14 @@ export function OrdersListScreen({
         : mode === 'cxc'
           ? cxcStage === 'authorization'
             ? 'CXC: Autorización'
-            : 'CXC: Facturación'
+            : cxcStage === 'billing'
+              ? 'CXC: Facturación'
+              : 'CXC: Todos'
         : warehouseStage === 'finished'
             ? 'Pedidos terminados'
-            : 'Almacén: Surtido',
+            : warehouseStage === 'processing'
+              ? 'Almacén: Surtido'
+              : 'Almacén: Todos',
     [cxcStage, mode, warehouseStage],
   );
 
@@ -141,7 +150,8 @@ export function OrdersListScreen({
           search: searchText,
           status: statusFilter,
         });
-        setOrders(response.items);
+        const visibleItems = response.items.filter((item) => VISIBLE_STATUSES.includes(item.status));
+        setOrders(visibleItems);
         setErrorMessage(null);
       } catch (error) {
         if (error instanceof ApiError) {
@@ -197,6 +207,19 @@ export function OrdersListScreen({
       {mode === 'warehouse' ? (
         <View style={styles.stageRow}>
           <Pressable
+            style={[styles.stageButton, warehouseStage === 'all' && styles.stageButtonActive]}
+            onPress={() => setWarehouseStage('all')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                warehouseStage === 'all' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Todos
+            </Text>
+          </Pressable>
+          <Pressable
             style={[styles.stageButton, warehouseStage === 'processing' && styles.stageButtonActive]}
             onPress={() => setWarehouseStage('processing')}
           >
@@ -227,6 +250,19 @@ export function OrdersListScreen({
 
       {mode === 'cxc' ? (
         <View style={styles.stageRow}>
+          <Pressable
+            style={[styles.stageButton, cxcStage === 'all' && styles.stageButtonActive]}
+            onPress={() => setCxcStage('all')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                cxcStage === 'all' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Todos
+            </Text>
+          </Pressable>
           <Pressable
             style={[styles.stageButton, cxcStage === 'authorization' && styles.stageButtonActive]}
             onPress={() => setCxcStage('authorization')}
@@ -301,10 +337,14 @@ export function OrdersListScreen({
                   : mode === 'cxc'
                     ? cxcStage === 'authorization'
                       ? 'No hay pedidos pendientes de autorización.'
-                      : 'No hay pedidos pendientes de facturación.'
+                      : cxcStage === 'billing'
+                        ? 'No hay pedidos pendientes de facturación.'
+                        : 'No hay pedidos visibles para CXC.'
                   : warehouseStage === 'finished'
                     ? 'No hay pedidos en fase Terminado.'
-                    : 'No hay pedidos pendientes de surtido en almacén.'
+                    : warehouseStage === 'processing'
+                      ? 'No hay pedidos pendientes de surtido en almacén.'
+                      : 'No hay pedidos visibles para almacén.'
               }
             />
           }

@@ -174,34 +174,38 @@ function AppNavigator() {
       <RootStack.Screen
         name="PedidoDetalle"
         options={{ title: 'Detalle de pedido' }}
-        children={({ route, navigation }) =>
-          route.params.mode === 'cxc' ? (
-            <CxcOrderFormScreen
-              orderId={route.params.orderId}
-              onDone={() => {
-                if (navigation.canGoBack()) {
-                  navigation.goBack();
-                  return;
-                }
-
-                navigation.navigate('Tabs');
-              }}
-            />
-          ) : (
-            <OrderDetailScreen
-              orderId={route.params.orderId}
-              mode={route.params.mode}
-              onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
-              onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
-              onOpenFinishedOrders={() =>
-                navigation.navigate('Tabs', {
-                  screen: 'Pedidos',
-                  params: { mode: 'warehouse', warehouseStage: 'finished' },
-                })
+        children={({ route, navigation }) => (
+          <OrderDetailScreen
+            orderId={route.params.orderId}
+            mode={route.params.mode}
+            onOpenWarehouseCapture={(orderId) => navigation.navigate('CapturaAlmacen', { orderId })}
+            onEditCaptureOrder={(orderId) => navigation.navigate('EditarPedidoVenta', { orderId })}
+            onOpenCxcOperation={(orderId) => navigation.navigate('OperacionCxc', { orderId })}
+            onOpenFinishedOrders={() =>
+              navigation.navigate('Tabs', {
+                screen: 'Pedidos',
+                params: { mode: 'warehouse', warehouseStage: 'finished' },
+              })
+            }
+          />
+        )}
+      />
+      <RootStack.Screen
+        name="OperacionCxc"
+        options={{ title: 'Operación CXC' }}
+        children={({ route, navigation }) => (
+          <CxcOrderFormScreen
+            orderId={route.params.orderId}
+            onDone={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+                return;
               }
-            />
-          )
-        }
+
+              navigation.navigate('Tabs');
+            }}
+          />
+        )}
       />
       <RootStack.Screen
         name="NuevoPedidoVenta"

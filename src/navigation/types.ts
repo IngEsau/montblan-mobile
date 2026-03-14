@@ -1,8 +1,8 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type OrderMode = 'sales' | 'warehouse' | 'cxc';
-export type WarehouseStage = 'processing' | 'finished';
-export type CxcStage = 'authorization' | 'billing';
+export type WarehouseStage = 'all' | 'processing' | 'finished';
+export type CxcStage = 'all' | 'authorization' | 'billing';
 
 export type AppTabParamList = {
   Pedidos:
@@ -19,6 +19,7 @@ export type AppTabParamList = {
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<AppTabParamList> | undefined;
   PedidoDetalle: { orderId: number; mode: OrderMode };
+  OperacionCxc: { orderId: number };
   NuevoPedidoVenta: undefined;
   EditarPedidoVenta: { orderId: number };
   CapturaAlmacen: { orderId: number };
