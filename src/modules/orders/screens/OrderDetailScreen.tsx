@@ -37,7 +37,7 @@ export function OrderDetailScreen({
   onOpenCxcOperation,
   onOpenFinishedOrders,
 }: OrderDetailScreenProps) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -70,6 +70,33 @@ export function OrderDetailScreen({
     }, [fetchDetail]),
   );
 
+  const normalizedRole = useMemo(
+    () =>
+      String(user?.rol ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim(),
+    [user?.rol],
+  );
+
+  const canSeeFinishedStage = useMemo(() => {
+    const permissionFlags = user?.permissions;
+    if (permissionFlags && typeof permissionFlags.can_warehouse === 'boolean') {
+      return Boolean(permissionFlags.can_warehouse);
+    }
+    if (normalizedRole === '') {
+      return true;
+    }
+
+    return (
+      normalizedRole.includes('ALMACEN') ||
+      normalizedRole.includes('THECREATOR') ||
+      normalizedRole.includes('ADMIN') ||
+      normalizedRole.includes('SUPER')
+    );
+  }, [normalizedRole, user?.permissions]);
+
   const canSendToAuthorization = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
   const canCaptureWarehouse = useMemo(
     () => mode === 'warehouse' && order?.status === 30,
@@ -80,8 +107,8 @@ export function OrderDetailScreen({
     [mode, order?.status],
   );
   const canOpenFinishedList = useMemo(
-    () => mode === 'warehouse' && order?.status === 50,
-    [mode, order?.status],
+    () => canSeeFinishedStage && order?.status === 50,
+    [canSeeFinishedStage, order?.status],
   );
 
   const sendToAuthorization = async () => {
@@ -157,6 +184,28 @@ export function OrderDetailScreen({
         </View>
       ) : null}
 
+      {order.status === 50 ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Resumen de terminado</Text>
+          <View style={styles.finishedSummaryRow}>
+            <Text style={styles.finishedSummaryLabel}>Documento final</Text>
+            <Text style={styles.finishedSummaryValue}>{order.no_factura || 'Sin documento final'}</Text>
+          </View>
+          <View style={styles.finishedSummaryRow}>
+            <Text style={styles.finishedSummaryLabel}>Ruta</Text>
+            <Text style={styles.finishedSummaryValue}>{order.ruta || 'Sin ruta capturada'}</Text>
+          </View>
+          <View style={styles.finishedSummaryRow}>
+            <Text style={styles.finishedSummaryLabel}>Entrega</Text>
+            <Text style={styles.finishedSummaryValue}>{formatDateYmd(order.fecha_entrega)}</Text>
+          </View>
+          <View style={styles.finishedSummaryRow}>
+            <Text style={styles.finishedSummaryLabel}>Cobranza</Text>
+            <Text style={styles.finishedSummaryValue}>{order.ctas_cobrar_status || '-'}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Detalle del pedido</Text>
         {order.detalle.length === 0 ? (
@@ -222,7 +271,7 @@ export function OrderDetailScreen({
           style={[styles.actionButton, styles.actionButtonFinished]}
           onPress={onOpenFinishedOrders}
         >
-          <Text style={styles.actionLabel}>Ver pedidos terminados</Text>
+          <Text style={styles.actionLabel}>Ir a pedidos terminados</Text>
         </Pressable>
       ) : null}
     </ScrollView>
@@ -319,6 +368,22 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.regular,
     lineHeight: 20,
+  },
+  finishedSummaryRow: {
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: '#edf2f6',
+  },
+  finishedSummaryLabel: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+  },
+  finishedSummaryValue: {
+    marginTop: 3,
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
   },
   lineCard: {
     paddingVertical: 10,

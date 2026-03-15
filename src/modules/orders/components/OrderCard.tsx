@@ -35,8 +35,12 @@ function resolveStatusTone(order: PedidoListItem): 'primary' | 'warning' | 'dang
 }
 
 export function OrderCard({ order, onPress }: OrderCardProps) {
+  const isFinished = order.status === 50;
+  const documentLabel =
+    (order.tipo_fac_rem ?? 10) === 20 ? 'Recibo simple' : 'Factura';
+
   return (
-    <Pressable style={styles.card} onPress={onPress}>
+    <Pressable style={[styles.card, isFinished && styles.cardFinished]} onPress={onPress}>
       <View style={styles.topRow}>
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <StatusBadge
@@ -47,6 +51,11 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
 
       <Text style={styles.client}>{order.cliente_razon_social || 'Sin razón social'}</Text>
       <Text style={styles.clientCode}>Cliente: {order.no_cliente || '-'}</Text>
+      {isFinished ? (
+        <Text style={styles.finishedMeta}>
+          {documentLabel}: {order.no_factura || 'Sin documento final'}
+        </Text>
+      ) : null}
 
       <View style={styles.bottomRow}>
         <Text style={styles.total}>{formatMoney(order.total)}</Text>
@@ -64,6 +73,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
     marginBottom: 10,
+  },
+  cardFinished: {
+    borderColor: '#ccecdf',
+    backgroundColor: '#f7fcfa',
   },
   topRow: {
     flexDirection: 'row',
@@ -87,6 +100,12 @@ const styles = StyleSheet.create({
     marginTop: 3,
     color: palette.mutedText,
     fontFamily: typography.regular,
+    fontSize: 12,
+  },
+  finishedMeta: {
+    marginTop: 6,
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
     fontSize: 12,
   },
   bottomRow: {

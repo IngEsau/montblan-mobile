@@ -248,6 +248,16 @@ export function OrdersListScreen({
         </View>
       ) : null}
 
+      {mode === 'warehouse' && warehouseStage === 'finished' ? (
+        <View style={styles.finishedInfoCard}>
+          <Text style={styles.finishedInfoTitle}>Pedidos terminados</Text>
+          <Text style={styles.finishedInfoText}>
+            Aquí se concentran los pedidos ya cerrados dentro del flujo. Puedes abrirlos para revisar documento final,
+            ruta, entrega y detalle histórico sin mezclarlos con surtido pendiente.
+          </Text>
+        </View>
+      ) : null}
+
       {mode === 'cxc' ? (
         <View style={styles.stageRow}>
           <Pressable
@@ -415,6 +425,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 10,
+  },
+  finishedInfoCard: {
+    marginBottom: 10,
+    backgroundColor: '#f3fbf8',
+    borderWidth: 1,
+    borderColor: '#d7ece8',
+    borderRadius: 12,
+    padding: 12,
+  },
+  finishedInfoTitle: {
+    color: palette.primaryDark,
+    fontFamily: typography.semiBold,
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  finishedInfoText: {
+    color: palette.text,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    lineHeight: 18,
   },
   stageButton: {
     flex: 1,
