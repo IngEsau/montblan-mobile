@@ -48,7 +48,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [clienteSearch, setClienteSearch] = useState('');
   const [productoSearch, setProductoSearch] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [noPedido, setNoPedido] = useState('');
   const [clienteCondiciones, setClienteCondiciones] = useState('');
   const [clienteCorreo, setClienteCorreo] = useState('');
   const [clienteRfc, setClienteRfc] = useState('');
@@ -135,7 +134,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       if (pedidoResponse?.item) {
         const item = pedidoResponse.item;
 
-        setNoPedido(item.no_pedido || '');
         setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
         setClienteCondiciones(item.cliente_condiciones || '');
         setClienteCorreo(item.cliente_correo || '');
@@ -540,10 +538,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       return 'Debes seleccionar un cliente.';
     }
 
-    if (!noPedido.trim()) {
-      return 'Debes capturar el número de pedido.';
-    }
-
     if (!direccion.trim()) {
       return 'Debes capturar la dirección del pedido.';
     }
@@ -588,7 +582,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       const payload = {
         pedido: {
           no_cliente: selectedCliente.clave,
-          no_pedido: noPedido.trim(),
           cliente_razon_social: selectedCliente.nombre_comercial || selectedCliente.nombre,
           cliente_telefono: selectedCliente.telefono || '',
           cliente_correo: clienteCorreo.trim() || undefined,
@@ -677,16 +670,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
         <View style={styles.lineRow}>
           <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>No pedido</Text>
-            <TextInput
-              value={noPedido}
-              onChangeText={setNoPedido}
-              placeholder="Ej. 1001"
-              style={styles.input}
-              autoCapitalize="none"
-            />
-          </View>
-          <View style={styles.lineInputWrap}>
             <Text style={styles.label}>Tipo de comprobante</Text>
             <View style={[styles.toggleRow, styles.toggleRowCompact]}>
               <Pressable
@@ -706,6 +689,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
           </View>
         </View>
+        <Text style={styles.helper}>
+          El número de pedido se asigna después en facturación por CXC, por eso no se captura en esta fase.
+        </Text>
 
         <Text style={styles.label}>Condiciones</Text>
         <TextInput
