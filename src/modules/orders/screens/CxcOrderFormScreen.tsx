@@ -12,10 +12,10 @@ import {
 import { ApiError } from '../../../shared/api/http';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
-import { formatMoney, getTodayYmd } from '../../../shared/utils/formatters';
+import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido, PedidoPagoItem } from '../types';
+import { Pedido } from '../types';
 
 type CxcOrderFormScreenProps = {
   orderId: number;
@@ -34,25 +34,14 @@ function formatHistorialDate(value: string | null | undefined) {
   return value;
 }
 
-function formatMontoInput(value: string) {
-  return value.replace(',', '.').replace(/[^0-9.]/g, '');
-}
-
 export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
-  const [pagos, setPagos] = useState<PedidoPagoItem[]>([]);
   const [totals, setTotals] = useState({
     total_pedido: 0,
-    total_pagado: 0,
-    saldo: 0,
     cobranza_status: 'NO PAGADO',
   });
   const [noFacturaInput, setNoFacturaInput] = useState('');
-  const [montoPago, setMontoPago] = useState('');
-  const [fechaPago, setFechaPago] = useState(getTodayYmd());
-  const [referenciaPago, setReferenciaPago] = useState('');
-  const [notasPago, setNotasPago] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -137,20 +126,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     [documentFieldLabel, documentoGlobalAplicado, documentoGuardado, noPedidoVisible, order?.no_pedido, totals.cobranza_status],
   );
 
-  const applyClampMonto = useCallback(
-    (raw: string) => {
-      const parsed = Number(raw || 0);
-      const saldoActual = Number(totals.saldo || 0);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        return '';
-      }
-
-      const clamped = saldoActual > 0 ? Math.min(parsed, saldoActual) : 0;
-      return clamped > 0 ? clamped.toFixed(2) : '';
-    },
-    [totals.saldo],
-  );
-
   const fetchCxcData = useCallback(async () => {
     if (!token) {
       return;
@@ -161,25 +136,10 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       const detailResponse = await ordersApi.detail(token, orderId);
       const item = detailResponse.item;
       setOrder(item);
-
-      if ((item.status ?? 0) === 45) {
-        const pagosResponse = await ordersApi.pagos(token, orderId);
-        setPagos(pagosResponse.items || []);
-        setTotals({
-          total_pedido: pagosResponse.totals.total_pedido,
-          total_pagado: pagosResponse.totals.total_pagado,
-          saldo: pagosResponse.totals.saldo,
-          cobranza_status: pagosResponse.cobranza_status || item.ctas_cobrar_status || 'NO PAGADO',
-        });
-      } else {
-        setPagos([]);
-        setTotals({
-          total_pedido: Number(item.total || 0),
-          total_pagado: Number(item.total_pagado || 0),
-          saldo: Number(item.saldo ?? item.total ?? 0),
-          cobranza_status: item.ctas_cobrar_status || 'NO PAGADO',
-        });
-      }
+      setTotals({
+        total_pedido: Number(item.total || 0),
+        cobranza_status: item.ctas_cobrar_status || 'NO PAGADO',
+      });
 
       setNoFacturaInput(item.no_factura || '');
 
@@ -219,79 +179,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     } finally {
       setIsBusy(false);
     }
-  };
-
-  const registerPago = async () => {
-    if (!token || !order || isBusy) {
-      return;
-    }
-
-    const montoNormalizado = applyClampMonto(montoPago);
-    if (!montoNormalizado) {
-      setErrorMessage('Debes capturar un monto válido mayor a 0.');
-      return;
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaPago.trim())) {
-      setErrorMessage('La fecha de pago debe estar en formato YYYY-MM-DD.');
-      return;
-    }
-
-    setIsBusy(true);
-    setErrorMessage(null);
-    try {
-      const response = await ordersApi.registrarPago(token, order.id, {
-        monto: Number(montoNormalizado),
-        fecha_pago: fechaPago.trim(),
-        referencia: referenciaPago.trim() || undefined,
-        notas: notasPago.trim() || undefined,
-      });
-
-      Alert.alert('Pago registrado', response.message);
-      setMontoPago('');
-      setReferenciaPago('');
-      setNotasPago('');
-      await fetchCxcData();
-    } catch (error) {
-      const message = error instanceof ApiError ? error.message : 'No fue posible registrar el pago.';
-      setErrorMessage(message);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
-  const deletePago = (pago: PedidoPagoItem) => {
-    if (!token || !order || isBusy) {
-      return;
-    }
-
-    Alert.alert(
-      'Eliminar pago',
-      `¿Eliminar el pago de ${formatMoney(pago.monto)}?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            setIsBusy(true);
-            setErrorMessage(null);
-            try {
-              const response = await ordersApi.deletePago(token, order.id, pago.id);
-              Alert.alert('Pago eliminado', response.message);
-              await fetchCxcData();
-            } catch (error) {
-              const message =
-                error instanceof ApiError ? error.message : 'No fue posible eliminar el pago.';
-              setErrorMessage(message);
-            } finally {
-              setIsBusy(false);
-            }
-          },
-        },
-      ],
-      { cancelable: true },
-    );
   };
 
   const continueFlow = async () => {
@@ -354,7 +241,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <Text style={styles.stageHelper}>
             {isAuthorizationStage
               ? 'CXC valida el pedido y lo libera a almacén.'
-              : 'CXC registra el documento final, pagos y cierre del flujo.'}
+              : 'CXC registra el documento final y cierra el flujo.'}
           </Text>
         </View>
 
@@ -387,8 +274,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <Text style={styles.summaryValue}>{totals.cobranza_status}</Text>
           </View>
           <View style={styles.summaryCell}>
-            <Text style={styles.summaryLabel}>Pagos registrados</Text>
-            <Text style={styles.summaryValue}>{pagos.length}</Text>
+            <Text style={styles.summaryLabel}>Documento listo</Text>
+            <Text style={styles.summaryValue}>{documentoGuardado ? 'Sí' : 'Pendiente'}</Text>
           </View>
         </View>
       </View>
@@ -411,7 +298,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               Revisa condiciones comerciales, observaciones y tipo de comprobante antes de enviarlo a almacén.
             </Text>
             <Text style={styles.hint}>
-              En esta fase todavía no se registra documento final ni pagos. Es una liberación operativa de CXC.
+              En esta fase todavía no se registra documento final. Es una liberación operativa de CXC.
             </Text>
           </View>
 
@@ -469,78 +356,10 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                 <Text style={styles.amountLabel}>Total pedido</Text>
                 <Text style={styles.amountValue}>{formatMoney(totals.total_pedido)}</Text>
               </View>
-              <View style={styles.amountItem}>
-                <Text style={styles.amountLabel}>Total pagado</Text>
-                <Text style={styles.amountValue}>{formatMoney(totals.total_pagado)}</Text>
-              </View>
-              <View style={styles.amountItem}>
-                <Text style={styles.amountLabel}>Saldo</Text>
-                <Text style={styles.amountValue}>{formatMoney(totals.saldo)}</Text>
-              </View>
             </View>
-
-            <Text style={styles.fieldLabel}>Monto pago</Text>
-            <TextInput
-              value={montoPago}
-              onChangeText={(text) => setMontoPago(formatMontoInput(text))}
-              onBlur={() => setMontoPago((prev) => applyClampMonto(prev))}
-              keyboardType="decimal-pad"
-              style={styles.input}
-              placeholder="0.00"
-            />
-
-            <Text style={styles.fieldLabel}>Fecha pago (YYYY-MM-DD)</Text>
-            <TextInput
-              value={fechaPago}
-              onChangeText={setFechaPago}
-              style={styles.input}
-              placeholder={getTodayYmd()}
-            />
-
-            <Text style={styles.fieldLabel}>Referencia</Text>
-            <TextInput
-              value={referenciaPago}
-              onChangeText={setReferenciaPago}
-              style={styles.input}
-              placeholder="Referencia"
-            />
-
-            <Text style={styles.fieldLabel}>Notas</Text>
-            <TextInput
-              value={notasPago}
-              onChangeText={setNotasPago}
-              style={[styles.input, styles.textarea]}
-              placeholder="Notas"
-              multiline
-            />
-
-            <Pressable style={styles.primaryButton} onPress={registerPago} disabled={isBusy}>
-              <Text style={styles.primaryButtonLabel}>Registrar pago</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Pagos registrados</Text>
-            {pagos.length === 0 ? (
-              <Text style={styles.hint}>Sin pagos registrados.</Text>
-            ) : (
-              pagos.map((pago) => (
-                <View key={pago.id} style={styles.paymentRow}>
-                  <View style={styles.paymentInfo}>
-                    <Text style={styles.paymentAmount}>{formatMoney(pago.monto)}</Text>
-                    <Text style={styles.paymentMeta}>{pago.fecha_pago}</Text>
-                    <Text style={styles.paymentMeta}>{pago.referencia || 'Sin referencia'}</Text>
-                  </View>
-                  <Pressable
-                    style={styles.deleteButton}
-                    onPress={() => deletePago(pago)}
-                    disabled={isBusy}
-                  >
-                    <Text style={styles.deleteButtonLabel}>Eliminar</Text>
-                  </Pressable>
-                </View>
-              ))
-            )}
+            <Text style={styles.hint}>
+              La cobranza se controla fuera de la app. En esta fase CXC solo registra el documento final y cierra el pedido cuando corresponda.
+            </Text>
           </View>
 
           <View style={styles.card}>
