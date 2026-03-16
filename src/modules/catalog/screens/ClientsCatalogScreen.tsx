@@ -107,7 +107,7 @@ export function ClientsCatalogScreen() {
             <View style={styles.card}>
               <View style={styles.topRow}>
                 <Text style={styles.code}>{item.clave || '-'}</Text>
-                <Text style={styles.balance}>{formatMoney(item.saldo)}</Text>
+                <Text style={styles.balance}>Saldo: {formatMoney(item.saldo)}</Text>
               </View>
 
               <Text style={styles.name}>{item.nombre || '-'}</Text>

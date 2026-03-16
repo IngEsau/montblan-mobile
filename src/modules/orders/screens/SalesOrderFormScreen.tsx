@@ -1022,6 +1022,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.modalItemTitle}>{cliente.clave}</Text>
                 <Text style={styles.modalItemSubtitle}>{cliente.nombre_comercial || cliente.nombre}</Text>
                 {cliente.calle ? <Text style={styles.modalItemMeta}>{cliente.calle}</Text> : null}
+                <Text style={styles.modalItemMeta}>Saldo: {formatMoney(cliente.saldo)}</Text>
               </Pressable>
             ))}
           </ScrollView>
