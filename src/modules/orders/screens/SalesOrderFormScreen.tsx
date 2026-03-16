@@ -1152,7 +1152,7 @@ const styles = StyleSheet.create({
     color: palette.mutedText,
     fontFamily: typography.regular,
     fontSize: 11,
-    marginTop: -8,
+    marginTop: 0,
     marginBottom: 10,
   },
   input: {
