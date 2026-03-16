@@ -77,6 +77,34 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const applyClienteSelection = useCallback(
+    (cliente: Cliente, options?: { preserveManualFields?: boolean }) => {
+      const preserveManualFields = options?.preserveManualFields === true;
+
+      setSelectedCliente(cliente);
+      setDireccion((cliente.calle || '').trim());
+
+      // El catálogo de clientes actual no expone ubicación completa,
+      // así que limpiamos residuos de C.P./estado/municipio/colonia al cambiar de cliente.
+      setCodigoPostal('');
+      setCodigoPostalRows([]);
+      setEstadoId(null);
+      setMunicipioId(null);
+      setColoniaId(null);
+      setNumInt('');
+      setNumExt('');
+      setReferenciaDireccion('');
+
+      if (!preserveManualFields) {
+        setClienteCondiciones('');
+        setClienteCorreo('');
+        setClienteRfc('');
+        setUsoCfdi('');
+      }
+    },
+    [],
+  );
+
   const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null) => {
     const sa = inventarioSa !== null ? Number(inventarioSa) : 0;
     const cmb = inventarioCmb !== null ? Number(inventarioCmb) : 0;
@@ -138,7 +166,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
         const selectedFromCatalog = clientesResponse.items.find((cliente) => cliente.clave === item.no_cliente);
         if (selectedFromCatalog) {
-          setSelectedCliente(selectedFromCatalog);
+          applyClienteSelection(selectedFromCatalog, { preserveManualFields: true });
           if (!item.direccion?.direccion) {
             setDireccion((selectedFromCatalog.calle || '').trim());
           }
@@ -192,7 +220,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     } finally {
       setLoadingCatalogs(false);
     }
-  }, [getInventarioDisponible, isEditMode, orderId, token]);
+  }, [applyClienteSelection, getInventarioDisponible, isEditMode, orderId, token]);
 
   useEffect(() => {
     loadFormData();
@@ -987,13 +1015,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 key={cliente.id}
                 style={styles.modalItem}
                 onPress={() => {
-                  setSelectedCliente(cliente);
-                  setDireccion((cliente.calle || '').trim());
+                  applyClienteSelection(cliente);
                   setClienteModalOpen(false);
                 }}
               >
                 <Text style={styles.modalItemTitle}>{cliente.clave}</Text>
                 <Text style={styles.modalItemSubtitle}>{cliente.nombre_comercial || cliente.nombre}</Text>
+                {cliente.calle ? <Text style={styles.modalItemMeta}>{cliente.calle}</Text> : null}
               </Pressable>
             ))}
           </ScrollView>
