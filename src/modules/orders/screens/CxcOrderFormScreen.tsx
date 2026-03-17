@@ -22,6 +22,34 @@ type CxcOrderFormScreenProps = {
   onDone: (orderId: number) => void;
 };
 
+const COBRANZA_OPTIONS = [
+  { code: 10, label: 'NO PAGADO' },
+  { code: 30, label: 'PAGO PARCIAL' },
+  { code: 20, label: 'LIQUIDADO' },
+];
+
+function getCobranzaStatusCode(pedido: Pedido | null) {
+  const directCode = pedido?.ctas_cobrar_status_code;
+  if (typeof directCode === 'number' && !Number.isNaN(directCode)) {
+    return directCode;
+  }
+
+  switch ((pedido?.ctas_cobrar_status || '').toUpperCase()) {
+    case 'LIQUIDADO':
+      return 20;
+    case 'PAGO PARCIAL':
+      return 30;
+    case 'NO PAGADO':
+    default:
+      return 10;
+  }
+}
+
+function getCobranzaStatusLabel(code: number, fallback?: string | null) {
+  const option = COBRANZA_OPTIONS.find((item) => item.code === code);
+  return option?.label || fallback || 'NO PAGADO';
+}
+
 function formatHistorialDate(value: string | null | undefined) {
   if (!value) {
     return '-';
@@ -41,6 +69,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     total_pedido: 0,
     cobranza_status: 'NO PAGADO',
   });
+  const [cobranzaStatusCode, setCobranzaStatusCode] = useState<number>(10);
   const [noFacturaInput, setNoFacturaInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
@@ -120,10 +149,14 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       {
         label: 'Cobranza',
         done: true,
-        value: totals.cobranza_status,
+        value: getCobranzaStatusLabel(cobranzaStatusCode, totals.cobranza_status),
       },
     ],
-    [documentFieldLabel, documentoGlobalAplicado, documentoGuardado, noPedidoVisible, order?.no_pedido, totals.cobranza_status],
+    [cobranzaStatusCode, documentFieldLabel, documentoGlobalAplicado, documentoGuardado, noPedidoVisible, order?.no_pedido, totals.cobranza_status],
+  );
+  const cobranzaStatusLabel = useMemo(
+    () => getCobranzaStatusLabel(cobranzaStatusCode, totals.cobranza_status),
+    [cobranzaStatusCode, totals.cobranza_status],
   );
 
   const fetchCxcData = useCallback(async () => {
@@ -135,11 +168,13 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     try {
       const detailResponse = await ordersApi.detail(token, orderId);
       const item = detailResponse.item;
+      const currentCobranzaCode = getCobranzaStatusCode(item);
       setOrder(item);
       setTotals({
         total_pedido: Number(item.total || 0),
-        cobranza_status: item.ctas_cobrar_status || 'NO PAGADO',
+        cobranza_status: getCobranzaStatusLabel(currentCobranzaCode, item.ctas_cobrar_status),
       });
+      setCobranzaStatusCode(currentCobranzaCode);
 
       setNoFacturaInput(item.no_factura || '');
 
@@ -170,11 +205,35 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     setIsBusy(true);
     setErrorMessage(null);
     try {
-      const response = await ordersApi.updateCxc(token, order.id, { no_factura: numero });
+      const response = await ordersApi.updateCxc(token, order.id, {
+        no_factura: numero,
+        ctas_cobrar_status: cobranzaStatusCode,
+      });
       Alert.alert('Documento actualizado', response.message);
       await fetchCxcData();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el documento.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const saveCobranzaStatus = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        ctas_cobrar_status: cobranzaStatusCode,
+      });
+      Alert.alert('Cobranza actualizada', response.message);
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el estatus de cobranza.';
       setErrorMessage(message);
     } finally {
       setIsBusy(false);
@@ -271,7 +330,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           </View>
           <View style={styles.summaryCell}>
             <Text style={styles.summaryLabel}>Cobranza</Text>
-            <Text style={styles.summaryValue}>{totals.cobranza_status}</Text>
+            <Text style={styles.summaryValue}>{cobranzaStatusLabel}</Text>
           </View>
           <View style={styles.summaryCell}>
             <Text style={styles.summaryLabel}>Documento listo</Text>
@@ -350,7 +409,23 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Cobranza</Text>
-            <Text style={styles.meta}>Estatus: {totals.cobranza_status}</Text>
+            <Text style={styles.meta}>Estatus: {cobranzaStatusLabel}</Text>
+            <View style={styles.cobranzaSelector}>
+              {COBRANZA_OPTIONS.map((option) => {
+                const isSelected = cobranzaStatusCode === option.code;
+                return (
+                  <Pressable
+                    key={option.code}
+                    style={[styles.cobranzaOption, isSelected && styles.cobranzaOptionSelected]}
+                    onPress={() => setCobranzaStatusCode(option.code)}
+                  >
+                    <Text style={[styles.cobranzaOptionLabel, isSelected && styles.cobranzaOptionLabelSelected]}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <View style={styles.amountsRow}>
               <View style={styles.amountItem}>
                 <Text style={styles.amountLabel}>Total pedido</Text>
@@ -358,8 +433,11 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               </View>
             </View>
             <Text style={styles.hint}>
-              La cobranza se controla fuera de la app. En esta fase CXC solo registra el documento final y cierra el pedido cuando corresponda.
+              La cobranza se controla fuera de la app. En esta fase CXC solo define el estatus y registra el documento final cuando corresponda.
             </Text>
+            <Pressable style={styles.secondaryButton} onPress={saveCobranzaStatus} disabled={isBusy}>
+              <Text style={styles.secondaryButtonLabel}>Guardar estatus de cobranza</Text>
+            </Pressable>
           </View>
 
           <View style={styles.card}>
@@ -557,6 +635,32 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.regular,
     fontSize: 13,
+  },
+  cobranzaSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  cobranzaOption: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 999,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  cobranzaOptionSelected: {
+    borderColor: palette.primary,
+    backgroundColor: '#def3ee',
+  },
+  cobranzaOptionLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+  },
+  cobranzaOptionLabelSelected: {
+    color: palette.primaryDark,
   },
   fieldLabel: {
     color: palette.mutedText,
