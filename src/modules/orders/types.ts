@@ -11,6 +11,7 @@ export type PedidoListItem = {
   status: number;
   status_label: string | null;
   is_standby?: boolean | null;
+  ctas_cobrar_status_code?: number | null;
   ctas_cobrar_status: string | null;
   almacen_status: string | null;
   subtotal: number;
@@ -189,6 +190,7 @@ export type PedidoDeletePagoResponse = {
 
 export type PedidoCxcUpdatePayload = {
   no_factura?: string;
+  ctas_cobrar_status?: number;
 };
 
 export type PedidoCxcUpdateResponse = {
