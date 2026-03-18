@@ -133,6 +133,21 @@ export type PedidoTransitionResponse = {
     from?: { code: number; label: string };
     to?: { code: number; label: string };
   };
+  inventory_affected?: {
+    productos_afectados: number;
+    cantidad_total: number;
+    lineas: Array<{
+      codigo: string;
+      cantidad_afectada: number;
+      inventario_sa_anterior: number;
+      inventario_sa_nuevo: number;
+      inventario_cmb_anterior: number;
+      inventario_cmb_nuevo: number;
+      descuento_desde_sa: number;
+      descuento_desde_cmb: number;
+      lineas_pedido: number;
+    }>;
+  } | null;
   item: Pedido;
 };
 

@@ -250,9 +250,12 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     try {
       const transitionTarget = isAuthorizationStage ? 'almacen' : 'terminado';
       const response = await ordersApi.transition(token, order.id, transitionTarget);
+      const successMessage = !isAuthorizationStage && response.inventory_affected
+        ? `${response.message || 'Pedido terminado correctamente.'}\n\nInventario afectado: ${response.inventory_affected.productos_afectados} producto(s), ${response.inventory_affected.cantidad_total.toFixed(2)} unidades totales.`
+        : (response.message || (isAuthorizationStage ? 'Pedido enviado a almacén.' : 'Pedido terminado correctamente.'));
       Alert.alert(
         'Flujo actualizado',
-        response.message || (isAuthorizationStage ? 'Pedido enviado a almacén.' : 'Pedido terminado correctamente.'),
+        successMessage,
       );
       onDone(order.id);
     } catch (error) {
