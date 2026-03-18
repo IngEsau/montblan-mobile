@@ -2,6 +2,8 @@ import { apiRequest } from '../../../shared/api/http';
 import {
   PedidoCxcUpdatePayload,
   PedidoCxcUpdateResponse,
+  PedidoCancelarDocumentoPayload,
+  PedidoCancelarDocumentoResponse,
   PedidoCreatePayload,
   PedidoCreateResponse,
   PedidoDeletePagoResponse,
@@ -123,6 +125,13 @@ export const ordersApi = {
 
   registrarDocumento: (token: string, orderId: number, payload: PedidoRegistrarDocumentoPayload) =>
     apiRequest<PedidoRegistrarDocumentoResponse>(`/pedidos/${orderId}/documento`, {
+      token,
+      method: 'POST',
+      body: payload,
+    }),
+
+  cancelarDocumento: (token: string, orderId: number, payload: PedidoCancelarDocumentoPayload) =>
+    apiRequest<PedidoCancelarDocumentoResponse>(`/pedidos/${orderId}/cancelar-documento`, {
       token,
       method: 'POST',
       body: payload,
