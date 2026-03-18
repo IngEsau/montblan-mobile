@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -303,35 +304,48 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       return;
     }
 
+    const performCancellation = async () => {
+      setIsBusy(true);
+      setErrorMessage(null);
+      try {
+        const response = await ordersApi.cancelarDocumento(token, order.id, {
+          motivo_cancelacion_documento: reason,
+          confirmacion_documento: confirmation,
+        });
+        const successMessage = response.inventory_reverted
+          ? `${response.message}\n\nInventario revertido: ${response.inventory_reverted.productos_afectados} producto(s), ${response.inventory_reverted.cantidad_total.toFixed(2)} unidades totales.`
+          : response.message;
+        Alert.alert('Documento cancelado', successMessage);
+        await fetchCxcData();
+        onDone(order.id);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'No fue posible cancelar el documento final.';
+        setErrorMessage(message);
+      } finally {
+        setIsBusy(false);
+      }
+    };
+
+    const confirmationMessage = `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`;
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const accepted = window.confirm(confirmationMessage);
+      if (!accepted) {
+        return;
+      }
+      await performCancellation();
+      return;
+    }
+
     Alert.alert(
       'Confirmar cancelación',
-      `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`,
+      confirmationMessage,
       [
         { text: 'Volver', style: 'cancel' },
         {
           text: 'Cancelar documento',
           style: 'destructive',
-          onPress: async () => {
-            setIsBusy(true);
-            setErrorMessage(null);
-            try {
-              const response = await ordersApi.cancelarDocumento(token, order.id, {
-                motivo_cancelacion_documento: reason,
-                confirmacion_documento: confirmation,
-              });
-              const successMessage = response.inventory_reverted
-                ? `${response.message}\n\nInventario revertido: ${response.inventory_reverted.productos_afectados} producto(s), ${response.inventory_reverted.cantidad_total.toFixed(2)} unidades totales.`
-                : response.message;
-              Alert.alert('Documento cancelado', successMessage);
-              await fetchCxcData();
-              onDone(order.id);
-            } catch (error) {
-              const message = error instanceof ApiError ? error.message : 'No fue posible cancelar el documento final.';
-              setErrorMessage(message);
-            } finally {
-              setIsBusy(false);
-            }
-          },
+          onPress: performCancellation,
         },
       ],
     );
