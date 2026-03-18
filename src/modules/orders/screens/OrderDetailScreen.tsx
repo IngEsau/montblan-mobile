@@ -97,14 +97,33 @@ export function OrderDetailScreen({
     );
   }, [normalizedRole, user?.permissions]);
 
+  const canSeeCxcStage = useMemo(() => {
+    const permissionFlags = user?.permissions;
+    if (permissionFlags && typeof permissionFlags.can_cxc === 'boolean') {
+      return Boolean(permissionFlags.can_cxc);
+    }
+    if (normalizedRole === '') {
+      return true;
+    }
+
+    return (
+      normalizedRole.includes('CTAS') ||
+      normalizedRole.includes('COBRAR') ||
+      normalizedRole.includes('CXC') ||
+      normalizedRole.includes('THECREATOR') ||
+      normalizedRole.includes('ADMIN') ||
+      normalizedRole.includes('SUPER')
+    );
+  }, [normalizedRole, user?.permissions]);
+
   const canSendToAuthorization = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
   const canCaptureWarehouse = useMemo(
     () => mode === 'warehouse' && order?.status === 30,
     [mode, order?.status],
   );
   const canOperateCxc = useMemo(
-    () => mode === 'cxc' && (order?.status === 20 || order?.status === 45),
-    [mode, order?.status],
+    () => mode === 'cxc' && canSeeCxcStage && (order?.status === 20 || order?.status === 45 || order?.status === 50),
+    [canSeeCxcStage, mode, order?.status],
   );
   const canOpenFinishedList = useMemo(
     () => canSeeFinishedStage && order?.status === 50,
@@ -203,6 +222,24 @@ export function OrderDetailScreen({
             <Text style={styles.finishedSummaryLabel}>Cobranza</Text>
             <Text style={styles.finishedSummaryValue}>{order.ctas_cobrar_status || '-'}</Text>
           </View>
+          <View style={styles.finishedSummaryRow}>
+            <Text style={styles.finishedSummaryLabel}>Documento cancelado</Text>
+            <Text style={[styles.finishedSummaryValue, order.documento_cancelado && styles.finishedSummaryDanger]}>
+              {order.documento_cancelado ? 'Sí' : 'No'}
+            </Text>
+          </View>
+          {order.documento_cancelado ? (
+            <>
+              <View style={styles.finishedSummaryRow}>
+                <Text style={styles.finishedSummaryLabel}>Motivo de cancelación</Text>
+                <Text style={styles.finishedSummaryValue}>{order.motivo_cancelacion_documento || 'Sin motivo registrado'}</Text>
+              </View>
+              <View style={styles.finishedSummaryRow}>
+                <Text style={styles.finishedSummaryLabel}>Cancelado por</Text>
+                <Text style={styles.finishedSummaryValue}>{order.documento_cancelado_by_username || '-'}</Text>
+              </View>
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -262,7 +299,9 @@ export function OrderDetailScreen({
           style={[styles.actionButton, styles.actionButtonCxc]}
           onPress={() => onOpenCxcOperation(order.id)}
         >
-          <Text style={styles.actionLabel}>{order.status === 20 ? 'Abrir autorización' : 'Abrir facturación'}</Text>
+          <Text style={styles.actionLabel}>
+            {order.status === 20 ? 'Abrir autorización' : order.status === 45 ? 'Abrir facturación' : 'Abrir cancelación de documento'}
+          </Text>
         </Pressable>
       ) : null}
 
@@ -384,6 +423,9 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.semiBold,
     fontSize: 14,
+  },
+  finishedSummaryDanger: {
+    color: '#b42318',
   },
   lineCard: {
     paddingVertical: 10,

@@ -72,6 +72,11 @@ export type Pedido = PedidoListItem & {
   saldo?: number;
   pagos?: PedidoPagoItem[];
   historial_documentos?: PedidoHistorialDocumento[];
+  documento_cancelado?: boolean;
+  motivo_cancelacion_documento?: string | null;
+  documento_cancelado_at?: number | null;
+  documento_cancelado_by?: number | null;
+  documento_cancelado_by_username?: string | null;
   direccion?: PedidoDireccion | null;
   detalle: PedidoDetalleLinea[];
 };
@@ -145,6 +150,32 @@ export type PedidoTransitionResponse = {
       inventario_cmb_nuevo: number;
       descuento_desde_sa: number;
       descuento_desde_cmb: number;
+      lineas_pedido: number;
+    }>;
+  } | null;
+  item: Pedido;
+};
+
+export type PedidoCancelarDocumentoPayload = {
+  motivo_cancelacion_documento: string;
+  confirmacion_documento: string;
+};
+
+export type PedidoCancelarDocumentoResponse = {
+  ok: boolean;
+  message: string;
+  inventory_reverted?: {
+    productos_afectados: number;
+    cantidad_total: number;
+    lineas: Array<{
+      codigo: string;
+      cantidad_revertida: number;
+      inventario_sa_anterior: number;
+      inventario_sa_nuevo: number;
+      inventario_cmb_anterior: number;
+      inventario_cmb_nuevo: number;
+      reversion_hacia_sa: number;
+      reversion_hacia_cmb: number;
       lineas_pedido: number;
     }>;
   } | null;

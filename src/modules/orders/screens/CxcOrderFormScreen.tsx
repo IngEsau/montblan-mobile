@@ -71,6 +71,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   });
   const [cobranzaStatusCode, setCobranzaStatusCode] = useState<number>(10);
   const [noFacturaInput, setNoFacturaInput] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelConfirmInput, setCancelConfirmInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -78,13 +80,14 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const isFactura = useMemo(() => (order?.tipo_fac_rem ?? 10) === 10, [order?.tipo_fac_rem]);
   const isAuthorizationStage = useMemo(() => (order?.status ?? 0) === 20, [order?.status]);
   const isBillingStage = useMemo(() => (order?.status ?? 0) === 45, [order?.status]);
+  const isFinishedStage = useMemo(() => (order?.status ?? 0) === 50, [order?.status]);
   const documentFieldLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. recibo simple' : 'No. factura'),
     [order?.tipo_fac_rem],
   );
   const stageLabel = useMemo(
-    () => (isAuthorizationStage ? 'AUTORIZACION' : isBillingStage ? 'FACTURACION' : 'CXC'),
-    [isAuthorizationStage, isBillingStage],
+    () => (isAuthorizationStage ? 'AUTORIZACION' : isBillingStage ? 'FACTURACION' : isFinishedStage ? 'TERMINADO' : 'CXC'),
+    [isAuthorizationStage, isBillingStage, isFinishedStage],
   );
   const documentoGlobalAplicado = useMemo(() => {
     if (!order) {
@@ -103,6 +106,11 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const finishActionLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con recibo simple' : 'Terminar pedido facturado'),
     [order?.tipo_fac_rem],
+  );
+  const documentoCancelado = useMemo(() => Boolean(order?.documento_cancelado), [order?.documento_cancelado]);
+  const canCancelFinalDocument = useMemo(
+    () => isFinishedStage && documentoGuardado && !documentoCancelado,
+    [documentoCancelado, documentoGuardado, isFinishedStage],
   );
   const noPedidoVisible = useMemo(() => {
     const noPedido = (order?.no_pedido || '').trim();
@@ -175,8 +183,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
         cobranza_status: getCobranzaStatusLabel(currentCobranzaCode, item.ctas_cobrar_status),
       });
       setCobranzaStatusCode(currentCobranzaCode);
-
       setNoFacturaInput(item.no_factura || '');
+      setCancelConfirmInput('');
+      setCancelReason('');
 
       setErrorMessage(null);
     } catch (error) {
@@ -270,6 +279,64 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     }
   };
 
+  const cancelFinalDocument = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    const reason = cancelReason.trim();
+    const confirmation = cancelConfirmInput.trim();
+    const currentDocument = (order.no_factura || '').trim();
+
+    if (reason.length < 10) {
+      setErrorMessage('Debes capturar un motivo de cancelación con al menos 10 caracteres.');
+      return;
+    }
+
+    if (!currentDocument) {
+      setErrorMessage('El pedido no tiene documento final registrado para cancelar.');
+      return;
+    }
+
+    if (confirmation !== currentDocument) {
+      setErrorMessage('La confirmación no coincide con el documento final actual.');
+      return;
+    }
+
+    Alert.alert(
+      'Confirmar cancelación',
+      `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`,
+      [
+        { text: 'Volver', style: 'cancel' },
+        {
+          text: 'Cancelar documento',
+          style: 'destructive',
+          onPress: async () => {
+            setIsBusy(true);
+            setErrorMessage(null);
+            try {
+              const response = await ordersApi.cancelarDocumento(token, order.id, {
+                motivo_cancelacion_documento: reason,
+                confirmacion_documento: confirmation,
+              });
+              const successMessage = response.inventory_reverted
+                ? `${response.message}\n\nInventario revertido: ${response.inventory_reverted.productos_afectados} producto(s), ${response.inventory_reverted.cantidad_total.toFixed(2)} unidades totales.`
+                : response.message;
+              Alert.alert('Documento cancelado', successMessage);
+              await fetchCxcData();
+              onDone(order.id);
+            } catch (error) {
+              const message = error instanceof ApiError ? error.message : 'No fue posible cancelar el documento final.';
+              setErrorMessage(message);
+            } finally {
+              setIsBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loaderContainer}>
@@ -288,7 +355,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{isAuthorizationStage ? 'Autorización' : 'Facturación'}</Text>
+      <Text style={styles.title}>{isAuthorizationStage ? 'Autorización' : isBillingStage ? 'Facturación' : isFinishedStage ? 'Terminado / Cancelación' : 'CXC'}</Text>
       <Text style={styles.subtitle}>Pedido #{order.no_pedido || order.id}</Text>
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Tipo: {order.tipo_fac_rem_label || '-'}</Text>
@@ -303,7 +370,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <Text style={styles.stageHelper}>
             {isAuthorizationStage
               ? 'CXC valida el pedido y lo libera a almacén.'
-              : 'CXC registra el documento final y cierra el flujo.'}
+              : isBillingStage
+                ? 'CXC registra el documento final y cierra el flujo.'
+                : 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'}
           </Text>
         </View>
 
@@ -480,7 +549,73 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
         </>
       ) : null}
 
-      {!isAuthorizationStage && !isBillingStage ? (
+      {isFinishedStage ? (
+        <>
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Documento final terminado</Text>
+            <Text style={styles.meta}>
+              El pedido ya cerró el flujo y el inventario ya fue afectado. La cancelación del documento no reabre el pedido.
+            </Text>
+            <View style={styles.summaryGrid}>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Documento final</Text>
+                <Text style={styles.summaryValue}>{documentoGlobalAplicado}</Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Cobranza</Text>
+                <Text style={styles.summaryValue}>{cobranzaStatusLabel}</Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Documento cancelado</Text>
+                <Text style={[styles.summaryValue, documentoCancelado && styles.dangerText]}>
+                  {documentoCancelado ? 'Sí' : 'No'}
+                </Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Cancelado por</Text>
+                <Text style={styles.summaryValue}>{order.documento_cancelado_by_username || '-'}</Text>
+              </View>
+            </View>
+            {documentoCancelado ? (
+              <View style={styles.previewCard}>
+                <Text style={styles.previewLabel}>Motivo de cancelación</Text>
+                <Text style={styles.previewValue}>{order.motivo_cancelacion_documento || 'Sin motivo registrado'}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {canCancelFinalDocument ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Cancelar documento final</Text>
+              <Text style={styles.hint}>
+                Confirma el número exacto del documento y captura el motivo. El inventario se revertirá y el pedido permanecerá en TERMINADO.
+              </Text>
+              <Text style={styles.fieldLabel}>Confirmar {documentFieldLabel}</Text>
+              <TextInput
+                value={cancelConfirmInput}
+                onChangeText={setCancelConfirmInput}
+                style={styles.input}
+                placeholder={documentFieldLabel}
+                autoCapitalize="characters"
+              />
+              <Text style={styles.fieldLabel}>Motivo de cancelación</Text>
+              <TextInput
+                value={cancelReason}
+                onChangeText={setCancelReason}
+                style={[styles.input, styles.textarea]}
+                placeholder="Explica por qué se cancela el documento final"
+                multiline
+                textAlignVertical="top"
+              />
+              <Pressable style={styles.destructiveButton} onPress={cancelFinalDocument} disabled={isBusy}>
+                <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : 'Cancelar documento final'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </>
+      ) : null}
+
+      {!isAuthorizationStage && !isBillingStage && !isFinishedStage ? (
         <Text style={styles.hint}>Este pedido no está en una fase operable de CXC dentro del flujo actual.</Text>
       ) : null}
 
@@ -588,6 +723,9 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  dangerText: {
+    color: '#b42318',
   },
   noteRow: {
     borderTopWidth: 1,
@@ -763,6 +901,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  destructiveButton: {
+    marginTop: 10,
+    backgroundColor: '#b42318',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
   paymentRow: {
     borderTopWidth: 1,
