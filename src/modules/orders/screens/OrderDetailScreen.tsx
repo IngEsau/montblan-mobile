@@ -170,6 +170,7 @@ export function OrderDetailScreen({
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <View style={styles.badgesRow}>
           <StatusBadge label={order.status_label || 'SIN ESTADO'} tone={order.is_standby ? 'warning' : 'primary'} />
+          {order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
         </View>
 

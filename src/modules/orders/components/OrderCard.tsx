@@ -36,17 +36,21 @@ function resolveStatusTone(order: PedidoListItem): 'primary' | 'warning' | 'dang
 
 export function OrderCard({ order, onPress }: OrderCardProps) {
   const isFinished = order.status === 50;
+  const isCanceled = Boolean(order.documento_cancelado);
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Recibo simple' : 'Factura';
 
   return (
-    <Pressable style={[styles.card, isFinished && styles.cardFinished]} onPress={onPress}>
+    <Pressable style={[styles.card, isFinished && styles.cardFinished, isCanceled && styles.cardCanceled]} onPress={onPress}>
       <View style={styles.topRow}>
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
-        <StatusBadge
-          label={order.is_standby ? 'STANDBY' : order.status_label || 'SIN ESTADO'}
-          tone={resolveStatusTone(order)}
-        />
+        <View style={styles.badgesGroup}>
+          <StatusBadge
+            label={order.is_standby ? 'STANDBY' : order.status_label || 'SIN ESTADO'}
+            tone={resolveStatusTone(order)}
+          />
+          {isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
+        </View>
       </View>
 
       <Text style={styles.client}>{order.cliente_razon_social || 'Sin razón social'}</Text>
@@ -78,11 +82,19 @@ const styles = StyleSheet.create({
     borderColor: '#ccecdf',
     backgroundColor: '#f7fcfa',
   },
+  cardCanceled: {
+    borderColor: '#f3c6cf',
+    backgroundColor: '#fff8f9',
+  },
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
+  },
+  badgesGroup: {
+    alignItems: 'flex-end',
+    gap: 6,
   },
   orderNumber: {
     flex: 1,

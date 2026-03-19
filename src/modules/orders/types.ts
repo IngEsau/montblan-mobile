@@ -14,6 +14,7 @@ export type PedidoListItem = {
   ctas_cobrar_status_code?: number | null;
   ctas_cobrar_status: string | null;
   almacen_status: string | null;
+  documento_cancelado?: boolean;
   subtotal: number;
   iva: number;
   total: number;
