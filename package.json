@@ -6,10 +6,7 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "EXPO_UNSTABLE_HEADLESS=1 expo start --web --port 8082",
-    "start:prod": "EXPO_PUBLIC_API_BASE_URL=https://montblan.lerco.agency/web/api/v1 expo start",
-    "android:prod": "EXPO_PUBLIC_API_BASE_URL=https://montblan.lerco.agency/web/api/v1 expo start --android",
-    "web:prod": "EXPO_UNSTABLE_HEADLESS=1 EXPO_PUBLIC_API_BASE_URL=https://montblan.lerco.agency/web/api/v1 expo start --web --port 8082"
+    "web": "EXPO_UNSTABLE_HEADLESS=1 expo start --web --port 8082"
   },
   "dependencies": {
     "@expo-google-fonts/open-sans": "^0.4.2",

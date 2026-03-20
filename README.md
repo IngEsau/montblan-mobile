@@ -1,144 +1,164 @@
 # Montblan Mobile
 
-Aplicación móvil oficial del flujo de pedidos Montblan, integrada al backend Yii2 por API REST.
+Aplicación móvil oficial para la operación del flujo de pedidos Montblan, integrada al backend Yii2 mediante API REST.
 
-## 1) Alcance funcional
+## Overview
 
-- Login con token Bearer.
-- Catálogo de clientes y productos con búsqueda.
-- Flujo completo de pedidos por etapa:
-  - `CAPTURA` (Ventas)
-  - `ALMACEN` validación
-  - `CTAS X COBRAR`
-  - `ALMACEN` ruta/entrega
-  - `TERMINADO`
-- Operaciones de CXC en móvil:
-  - registro y eliminación de pagos
-  - registro de documento global del pedido (factura o recibo simple)
-- Vista de pedidos terminados para almacén y administrador.
+La app está diseñada para acompañar la operación diaria de ventas, almacén y CXC desde un flujo móvil consistente con el backend y las reglas actuales del negocio.
 
-## 2) Stack técnico
+Flujo vigente:
+- `CAPTURA`
+- `AUTORIZACION`
+- `ALMACEN`
+- `FACTURACION`
+- `TERMINADO`
+
+Capacidades principales:
+- autenticación con token Bearer
+- consulta de clientes y productos
+- captura y edición de pedidos en ventas
+- autorización CXC con asignación de `No. pedido`
+- captura de surtido y rollos en almacén
+- operación de documento final en facturación
+- cancelación documental con trazabilidad y reversa de inventario
+- soporte para pedidos postfechados
+
+## Stack
 
 - Expo 55
 - React Native 0.83
 - React 19
 - TypeScript
-- React Navigation (Stack + Tabs)
+- React Navigation
+- AsyncStorage para sesión local
 
-## 3) Requisitos
+## Requisitos
 
-- Node.js 20+
-- npm 10+
-- Backend API de Montblan disponible y accesible por red
+- Node.js 20 o superior
+- npm 10 o superior
+- backend Montblan accesible por red
+- credenciales de Expo/EAS si se generarán builds Android
 
-## 4) Configuración rápida
+## Configuración de entorno
 
-En `/home/esau/Desktop/montblan/montblan-mobile`:
+La app toma la URL base del backend desde la variable:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=
+```
+
+Buenas prácticas:
+- no versionar archivos `.env` reales
+- mantener solo `.env.example` como plantilla
+- usar una URL sin slash final
+- resolver la URL final por entorno fuera del repositorio
+
+### Entorno local
+
+1. Crea tu archivo `.env` a partir de `.env.example`.
+2. Define `EXPO_PUBLIC_API_BASE_URL` con la URL del backend correspondiente al entorno donde vas a trabajar.
+3. No subas archivos `.env` reales al repositorio.
+
+## Desarrollo local
+
+Instalación:
 
 ```bash
-cp .env.example .env
 npm install
 ```
 
-Variable obligatoria:
-
-```env
-EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8080/api/v1
-```
-
-Reglas:
-- usar URL sin slash final
-- Android Emulator: `http://10.0.2.2:8080/api/v1`
-- dispositivo físico: usar IP LAN del host (ej. `http://192.168.x.x:8080/api/v1`)
-
-## 5) Ejecución
+Scripts disponibles:
 
 ```bash
+npm run start
+npm run android
+npm run ios
 npm run web
 ```
 
-Opcional:
-
-```bash
-npm run android
-npm run ios
-```
-
-Para validación de tipos:
+Validación de tipos:
 
 ```bash
 npx tsc --noEmit
 ```
 
-## 6) Backend local (desarrollo)
+## Build Android
 
-En `/home/esau/Desktop/montblan/dev.montblan`:
+La app incluye configuración para EAS Build.
+
+Build interno en formato APK:
 
 ```bash
-php -S 127.0.0.1:8080 -t web
+npx eas build -p android --profile preview
 ```
 
-Documentación OpenAPI del backend:
-- `http://127.0.0.1:8080/api/docs`
+Build orientado a distribución:
 
-## 7) Endpoints que consume la app
+```bash
+npx eas build -p android --profile production
+```
 
-Autenticación:
-- `POST /auth/login`
-- `GET /auth/me`
+Identificador Android configurado:
+- `com.lerco.montblan`
 
-Catálogos:
-- `GET /clientes`
-- `GET /productos`
-- `GET /direcciones/codigo-postal/{cp}`
+### Variables para build
 
-Pedidos:
-- `GET /pedidos`
-- `GET /pedidos/{id}`
-- `POST /pedidos`
-- `PATCH /pedidos/{id}`
-- `POST /pedidos/{id}/transition`
-- `PATCH /pedidos/{id}/almacen`
-- `GET /pedidos/{id}/pagos`
-- `POST /pedidos/{id}/pagos`
-- `DELETE /pedidos/{id}/pagos/{pagoId}`
-- `PATCH /pedidos/{id}/ctas-cobrar`
-- `POST /pedidos/{id}/documento`
+Los builds no incluyen URLs hardcodeadas dentro del repositorio.
 
-Todos los endpoints son relativos a `EXPO_PUBLIC_API_BASE_URL`.
+Antes de ejecutar un build, define `EXPO_PUBLIC_API_BASE_URL` en alguno de estos puntos:
+- variables de entorno locales de la sesión
+- configuración segura del proveedor de CI/CD
+- variables de entorno administradas en Expo/EAS
 
-## 8) Roles y permisos
+Ejemplo local:
 
-La app habilita módulos según `user.permissions` devuelto por `/auth/me`:
+```bash
+export EXPO_PUBLIC_API_BASE_URL=<backend-url-without-trailing-slash>
+npx eas build -p android --profile preview
+```
 
-- `can_sales`: captura/edición de pedidos en fase ventas
-- `can_warehouse`: validación almacén y captura de ruta/entrega
-- `can_cxc`: operación de cuentas por cobrar
+## Integración con backend
 
-Si el backend no envía `permissions`, se aplica fallback por nombre de rol (`rol`) para mantener compatibilidad.
+La app consume los endpoints principales de autenticación, catálogos y pedidos.
 
-## 9) Estructura del proyecto
+Operaciones relevantes:
+- login y recuperación de perfil autenticado
+- listado y detalle de pedidos
+- creación y actualización de pedidos en captura
+- transición entre fases del flujo
+- operación de almacén
+- operación CXC en autorización y facturación
+- cancelación documental
+
+## Reglas operativas relevantes
+
+- ventas captura el pedido y puede editarlo mientras siga en `CAPTURA`
+- `No. pedido` se asigna en `AUTORIZACION`
+- `FACTURACION` opera con la variante facturada del pedido
+- los pedidos postfechados se bloquean en almacén hasta 24 horas antes de `fecha_entrega`
+- la afectación de inventario ocurre al pasar a `TERMINADO`
+- la cancelación del documento final no reabre el flujo y revierte inventario
+- la visibilidad de pedidos respeta el rol y, en ventas, el vendedor asignado
+
+## Estructura del proyecto
 
 ```text
 src/
-  core/                # bootstrap de app
-  navigation/          # stack, tabs y rutas
+  navigation/          # rutas y tabs principales
   modules/
-    auth/              # login y sesión
+    auth/              # login y contexto de sesión
     catalog/           # clientes y productos
     orders/            # flujo operativo de pedidos
   shared/
     api/               # cliente HTTP
-    config/            # env y configuración
-    storage/           # token/sesión
-    theme/             # paleta y tipografías
-    utils/             # formatters/helpers
+    config/            # lectura de entorno
+    storage/           # token y sesión local
+    theme/             # paleta, tipografía y estilos base
 ```
 
-## 10) Criterios operativos clave
+## Convenciones de mantenimiento
 
-- En captura de ventas solo se registran campos permitidos para esa fase.
-- `No pedido`, `Fecha/Hora`, vendedor y estatus son controlados por sistema.
-- El tipo de comprobante es global por pedido.
-- Ruta y fecha de entrega se capturan únicamente en `ALMACEN` final.
-- CXC no captura ruta ni fecha de entrega.
+- mantener el flujo móvil alineado con la API publicada
+- evitar hardcodear credenciales o URLs reales dentro del repositorio
+- documentar cualquier cambio de contrato en paralelo con el backend
+- separar cambios de build, funcionalidad y UI en commits distintos cuando sea posible
