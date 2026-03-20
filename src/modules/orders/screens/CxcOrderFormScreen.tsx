@@ -43,6 +43,7 @@ function formatHistorialDate(value: string | null | undefined) {
 export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
+  const [noPedidoInput, setNoPedidoInput] = useState('');
   const [noFacturaInput, setNoFacturaInput] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmInput, setCancelConfirmInput] = useState('');
@@ -55,7 +56,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const isBillingStage = useMemo(() => (order?.status ?? 0) === 45, [order?.status]);
   const isFinishedStage = useMemo(() => (order?.status ?? 0) === 50, [order?.status]);
   const documentFieldLabel = useMemo(
-    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. recibo simple' : 'No. factura'),
+    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. remisión' : 'No. factura'),
     [order?.tipo_fac_rem],
   );
   const stageLabel = useMemo(
@@ -68,16 +69,16 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     }
 
     const current = (order.no_factura || '').trim();
-    return current || ((order.tipo_fac_rem ?? 10) === 20 ? 'SIN RECIBO SIMPLE' : 'SIN FACTURA');
+    return current || ((order.tipo_fac_rem ?? 10) === 20 ? 'SIN REMISIÓN' : 'SIN FACTURA');
   }, [order]);
   const documentoGuardado = useMemo(() => Boolean((order?.no_factura || '').trim()), [order?.no_factura]);
   const documentInputPreview = useMemo(() => noFacturaInput.trim(), [noFacturaInput]);
   const documentActionLabel = useMemo(
-    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Guardar recibo simple' : 'Guardar factura'),
+    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Guardar remisión' : 'Guardar factura'),
     [order?.tipo_fac_rem],
   );
   const finishActionLabel = useMemo(
-    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con recibo simple' : 'Terminar pedido facturado'),
+    () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con remisión' : 'Terminar pedido facturado'),
     [order?.tipo_fac_rem],
   );
   const documentoCancelado = useMemo(() => Boolean(order?.documento_cancelado), [order?.documento_cancelado]);
@@ -85,14 +86,15 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => isFinishedStage && documentoGuardado && !documentoCancelado,
     [documentoCancelado, documentoGuardado, isFinishedStage],
   );
+  const noPedidoGuardado = useMemo(() => Boolean((order?.no_pedido || '').trim()), [order?.no_pedido]);
   const noPedidoVisible = useMemo(() => {
     const noPedido = (order?.no_pedido || '').trim();
     if (noPedido) {
       return noPedido;
     }
 
-    return isBillingStage ? 'Se asignará al guardar el documento final' : 'Pendiente hasta facturación';
-  }, [isBillingStage, order?.no_pedido]);
+    return isAuthorizationStage ? 'Pendiente de asignación en autorización' : 'Sin número de pedido';
+  }, [isAuthorizationStage, order?.no_pedido]);
   const cxcNotes = useMemo(
     () =>
       [
@@ -141,6 +143,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       const detailResponse = await ordersApi.detail(token, orderId);
       const item = detailResponse.item;
       setOrder(item);
+      setNoPedidoInput(item.no_pedido || '');
       setNoFacturaInput(item.no_factura || '');
       setCancelConfirmInput('');
       setCancelReason('');
@@ -179,6 +182,33 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       await fetchCxcData();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el documento.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const saveNoPedido = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    const numero = noPedidoInput.trim();
+    if (!numero) {
+      setErrorMessage('Debes capturar el número de pedido.');
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        no_pedido: numero,
+      });
+      Alert.alert('Número de pedido actualizado', response.message);
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el número de pedido.';
       setErrorMessage(message);
     } finally {
       setIsBusy(false);
@@ -371,14 +401,30 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Autorización del pedido</Text>
             <Text style={styles.meta}>
-              Revisa condiciones comerciales, observaciones y tipo de comprobante antes de enviarlo a almacén.
+              Revisa condiciones comerciales, observaciones y tipo global antes de enviarlo a almacén.
             </Text>
             <Text style={styles.hint}>
-              En esta fase todavía no se registra documento final. Es una liberación operativa de CXC.
+              En esta fase CXC asigna el número de pedido y libera operativamente el pedido a almacén.
             </Text>
+            <Text style={styles.fieldLabel}>No. pedido</Text>
+            <TextInput
+              value={noPedidoInput}
+              onChangeText={setNoPedidoInput}
+              style={styles.input}
+              placeholder="Captura el número de pedido"
+            />
+            <Pressable style={styles.secondaryButton} onPress={saveNoPedido} disabled={isBusy}>
+              <Text style={styles.secondaryButtonLabel}>Guardar número de pedido</Text>
+            </Pressable>
           </View>
 
-          <Pressable style={styles.primaryButton} onPress={continueFlow} disabled={isBusy}>
+          {!noPedidoGuardado ? (
+            <Text style={styles.warningText}>
+              Debes guardar el número de pedido antes de autorizar y enviar a almacén.
+            </Text>
+          ) : null}
+
+          <Pressable style={[styles.primaryButton, !noPedidoGuardado && styles.primaryButtonDisabled]} onPress={continueFlow} disabled={isBusy || !noPedidoGuardado}>
             <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : 'Autorizar y enviar a Almacén'}</Text>
           </Pressable>
         </>
@@ -406,16 +452,16 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               value={noFacturaInput}
               onChangeText={setNoFacturaInput}
               style={styles.input}
-              placeholder={isFactura ? 'Ingrese el número de factura' : 'Ingrese el número de recibo simple'}
+              placeholder={isFactura ? 'Ingrese el número de factura' : 'Ingrese el número de remisión'}
             />
             <Text style={styles.hint}>
-              Al guardar el documento final, el sistema sincroniza ese folio como número visible del pedido.
+              En esta fase CXC solo captura el documento final. El número de pedido ya debió quedar asignado en autorización.
             </Text>
             {documentInputPreview ? (
               <View style={styles.previewCard}>
-                <Text style={styles.previewLabel}>Vista previa de sincronización</Text>
+                <Text style={styles.previewLabel}>Vista previa del documento final</Text>
                 <Text style={styles.previewValue}>
-                  No. pedido: {documentInputPreview} | {documentFieldLabel}: {documentInputPreview}
+                  No. pedido: {noPedidoVisible} | {documentFieldLabel}: {documentInputPreview}
                 </Text>
               </View>
             ) : null}

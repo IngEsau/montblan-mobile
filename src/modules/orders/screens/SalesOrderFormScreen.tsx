@@ -27,10 +27,8 @@ type DraftLine = {
   precio: number;
   cantidad: string;
   descripcion: string;
-  observaciones: string;
   inventarioSa: number | null;
   inventarioCmb: number | null;
-  inventarioDisponible: number | null;
 };
 
 type SalesOrderFormScreenProps = {
@@ -72,7 +70,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [postfechado, setPostfechado] = useState(false);
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [showOptionalFields, setShowOptionalFields] = useState(false);
-  const [showProductDetails, setShowProductDetails] = useState(false);
   const [showAllLines, setShowAllLines] = useState(false);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
   const [isLookingUpPostalCode, setIsLookingUpPostalCode] = useState(false);
@@ -107,10 +104,10 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     [],
   );
 
-  const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null) => {
+  const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null, tipo: 10 | 20) => {
     const sa = inventarioSa !== null ? Number(inventarioSa) : 0;
     const cmb = inventarioCmb !== null ? Number(inventarioCmb) : 0;
-    return Number((sa + cmb).toFixed(4));
+    return Number((tipo === 10 ? cmb : sa).toFixed(4));
   }, []);
 
   const loadFormData = useCallback(async () => {
@@ -148,7 +145,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setInstruccionesCredito(item.instrucciones_credito || '');
         setInstruccionesAlmacen(item.instrucciones_almacen || '');
         setShowOptionalFields(Boolean(item.cliente_correo || item.cliente_rfc || item.uso_cfdi));
-        setShowProductDetails(Boolean(item.detalle.some((line) => line.observaciones)));
         setCodigoPostal(item.direccion?.codigo_postal || '');
         setDireccion(item.direccion?.direccion || '');
         setNumInt(item.direccion?.num_int || '');
@@ -200,15 +196,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               precio: Number(line.precio || 0),
               cantidad: String(line.cantidad || 0),
               descripcion: line.descripcion || lineName,
-              observaciones: line.observaciones || '',
               inventarioSa: line.inventario_sa ?? catalogProduct?.inventario_sa ?? null,
               inventarioCmb: line.inventario_cmb ?? catalogProduct?.inventario_cmb ?? null,
-              inventarioDisponible:
-                line.inventario_disponible ??
-                getInventarioDisponible(
-                  line.inventario_sa ?? catalogProduct?.inventario_sa ?? null,
-                  line.inventario_cmb ?? catalogProduct?.inventario_cmb ?? null,
-                ),
             };
           }),
         );
@@ -224,7 +213,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     } finally {
       setLoadingCatalogs(false);
     }
-  }, [applyClienteSelection, getInventarioDisponible, isEditMode, orderId, token]);
+  }, [applyClienteSelection, isEditMode, orderId, token]);
 
   useEffect(() => {
     loadFormData();
@@ -415,12 +404,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       precio: Number(producto.precio_venta || 0),
       cantidad: '1',
       descripcion: producto.nombre || producto.codigo,
-      observaciones: '',
       inventarioSa: producto.inventario_sa ?? null,
       inventarioCmb: producto.inventario_cmb ?? null,
-      inventarioDisponible:
-        producto.inventario_disponible ??
-        getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null),
     };
 
     setLines((prev) => [...prev, line]);
@@ -471,7 +456,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     () =>
       lines.map((line) => {
         const cantidad = Number(line.cantidad || 0);
-        const inventarioDisponible = line.inventarioDisponible;
+        const inventarioDisponible = getInventarioDisponible(line.inventarioSa, line.inventarioCmb, tipoComprobante);
         const disponibilidadInsuficiente =
           inventarioDisponible !== null &&
           Number.isFinite(cantidad) &&
@@ -480,10 +465,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
         return {
           ...line,
+          inventarioDisponible,
           disponibilidadInsuficiente,
         };
       }),
-    [lines],
+    [getInventarioDisponible, lines, tipoComprobante],
   );
 
   const visibleLines = useMemo(() => {
@@ -626,7 +612,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             cantidad: qty,
             precio: Number(line.precio.toFixed(2)),
             descripcion: line.descripcion,
-            observaciones: line.observaciones.trim() || undefined,
             importe,
           };
         }),
@@ -636,6 +621,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         isEditMode && orderId
           ? await ordersApi.update(token, orderId, payload)
           : await ordersApi.create(token, payload);
+
       Alert.alert(
         isEditMode ? 'Pedido actualizado' : 'Pedido creado',
         response.message || (isEditMode ? 'Pedido actualizado correctamente.' : 'Pedido guardado correctamente.'),
@@ -683,27 +669,27 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
         <View style={styles.lineRow}>
           <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>Tipo de comprobante</Text>
+            <Text style={styles.label}>Tipo global</Text>
             <View style={[styles.toggleRow, styles.toggleRowCompact]}>
               <Pressable
                 style={[styles.toggleButton, tipoComprobante === 10 && styles.toggleButtonActive]}
                 onPress={() => setTipoComprobante(10)}
               >
-                <Text style={[styles.toggleLabel, tipoComprobante === 10 && styles.toggleLabelActive]}>Factura</Text>
+                <Text style={[styles.toggleLabel, tipoComprobante === 10 && styles.toggleLabelActive]}>Facturación</Text>
               </Pressable>
               <Pressable
                 style={[styles.toggleButton, tipoComprobante === 20 && styles.toggleButtonActive]}
                 onPress={() => setTipoComprobante(20)}
               >
                 <Text style={[styles.toggleLabel, tipoComprobante === 20 && styles.toggleLabelActive]}>
-                  Recibo simple
+                  SA
                 </Text>
               </Pressable>
             </View>
           </View>
         </View>
         <Text style={styles.helper}>
-          El número de pedido se asigna después en facturación por CXC, por eso no se captura en esta fase.
+          El número de pedido se asigna en autorización por CXC, por eso no se captura en esta fase.
         </Text>
 
         <Text style={styles.label}>Postfechado</Text>
@@ -924,7 +910,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
       <View style={styles.sectionHeader}>
         <View>
-          <Text style={styles.sectionTitle}>Productos</Text>
+          <Text style={styles.sectionTitle}>Detalle de producto(s)</Text>
           {lines.length > 0 ? (
             <Text style={styles.sectionMeta}>
               Mostrando {visibleLines.length} de {lines.length} productos
@@ -932,13 +918,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           ) : null}
         </View>
         <View style={styles.sectionActions}>
-          {lines.length > 0 ? (
-            <Pressable style={styles.secondarySmallButton} onPress={() => setShowProductDetails((prev) => !prev)}>
-              <Text style={styles.secondarySmallButtonLabel}>
-                {showProductDetails ? 'Ocultar observaciones' : 'Editar observaciones'}
-              </Text>
-            </Pressable>
-          ) : null}
           <Pressable
             style={styles.smallButton}
             onPress={() => {
@@ -994,20 +973,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
             {line.disponibilidadInsuficiente ? (
               <Text style={styles.inventoryWarning}>
-                Inventario insuficiente para {line.codigo} - {line.nombre}. Puedes agregarlo al pedido, pero queda advertido.
+                Inventario insuficiente para {line.codigo} - {line.nombre} usando {tipoComprobante === 10 ? 'Inv. CMB' : 'Inv. SA'}. Puedes agregarlo al pedido, pero queda advertido.
               </Text>
-            ) : null}
-            {showProductDetails || line.observaciones ? (
-              <>
-                <Text style={styles.lineLabel}>Observaciones por partida</Text>
-                <TextInput
-                  value={line.observaciones}
-                  onChangeText={(value) => updateLine(line.id, 'observaciones', value)}
-                  placeholder="Indicaciones específicas para esta partida"
-                  style={[styles.lineInput, styles.lineTextarea]}
-                  multiline
-                />
-              </>
             ) : null}
           </View>
         ))
@@ -1081,11 +1048,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
                 <Text style={styles.modalItemPrice}>{formatMoney(producto.precio_venta)}</Text>
                 <Text style={styles.modalItemMeta}>
-                  Inv. disponible: {producto.inventario_disponible ?? getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
+                  Inv. disponible: {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
                 </Text>
-                {(producto.inventario_disponible ?? getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null)) <= 0 ? (
+                {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante) <= 0 ? (
                   <Text style={styles.inventoryWarning}>
-                    Inventario insuficiente para {producto.codigo} - {producto.nombre || 'Sin nombre'}.
+                    Inventario insuficiente para {producto.codigo} - {producto.nombre || 'Sin nombre'} usando {tipoComprobante === 10 ? 'Inv. CMB' : 'Inv. SA'}.
                   </Text>
                 ) : null}
               </Pressable>
@@ -1266,6 +1233,12 @@ const styles = StyleSheet.create({
     color: palette.navy,
     fontFamily: typography.semiBold,
     fontSize: 16,
+  },
+  sectionHeaderInline: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   sectionMeta: {
     color: palette.mutedText,

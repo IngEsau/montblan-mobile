@@ -239,6 +239,7 @@ export type PedidoDeletePagoResponse = {
 };
 
 export type PedidoCxcUpdatePayload = {
+  no_pedido?: string;
   no_factura?: string;
 };
 
