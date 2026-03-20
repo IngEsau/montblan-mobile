@@ -29,6 +29,30 @@ type OrderDetailScreenProps = {
   onOpenFinishedOrders: () => void;
 };
 
+function resolveStatusTone(order: Pedido): 'primary' | 'warning' | 'danger' | 'success' | 'default' {
+  if (order.is_standby) {
+    return 'warning';
+  }
+
+  if (order.status === 50) {
+    return 'success';
+  }
+
+  if (order.status === 1) {
+    return 'danger';
+  }
+
+  if (order.status === 20 || order.status === 30 || order.status === 45) {
+    return 'warning';
+  }
+
+  if (order.status === 10) {
+    return 'primary';
+  }
+
+  return 'default';
+}
+
 export function OrderDetailScreen({
   orderId,
   mode,
@@ -50,8 +74,9 @@ export function OrderDetailScreen({
 
     setIsLoading(true);
     try {
-      const response = await ordersApi.detail(token, orderId);
-      setOrder(response.item);
+      const detailResponse = await ordersApi.detail(token, orderId);
+      const item = detailResponse.item;
+      setOrder(item);
       setErrorMessage(null);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -177,7 +202,7 @@ export function OrderDetailScreen({
       <View style={styles.headerCard}>
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <View style={styles.badgesRow}>
-          <StatusBadge label={order.status_label || 'SIN ESTADO'} tone={order.is_standby ? 'warning' : 'primary'} />
+          <StatusBadge label={order.status_label || 'SIN ESTADO'} tone={resolveStatusTone(order)} />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
           {order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
@@ -246,7 +271,7 @@ export function OrderDetailScreen({
       ) : null}
 
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Detalle del pedido</Text>
+        <Text style={styles.sectionTitle}>Detalle de producto(s)</Text>
         {order.detalle.length === 0 ? (
           <Text style={styles.meta}>Sin partidas</Text>
         ) : (
@@ -256,7 +281,7 @@ export function OrderDetailScreen({
                 <Text style={styles.lineCode}>{line.codigo || 'SIN CÓDIGO'}</Text>
                 <Text style={styles.lineAmount}>{formatMoney(line.importe)}</Text>
               </View>
-              <Text style={styles.lineDesc}>{line.descripcion || 'Sin descripción'}</Text>
+              <Text style={styles.lineDesc}>{line.descripcion || line.codigo || 'Producto sin nombre'}</Text>
               <Text style={styles.metaRow}>
                 Cantidad: {line.cantidad} | Surtido: {line.surtido ?? 0} | Faltante: {line.faltante}
               </Text>

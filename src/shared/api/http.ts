@@ -20,11 +20,12 @@ type RequestOptions = {
   body?: unknown;
 };
 
-function buildHeaders(token?: string | null) {
+function buildHeaders(token?: string | null, body?: unknown) {
   const headers: Record<string, string> = {
     Accept: 'application/json',
-    'Content-Type': 'application/json',
   };
+
+  headers['Content-Type'] = 'application/json';
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -50,8 +51,11 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
-    headers: buildHeaders(token),
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: buildHeaders(token, body),
+    body:
+      body === undefined
+        ? undefined
+        : JSON.stringify(body),
   });
 
   const rawText = await response.text();

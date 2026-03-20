@@ -38,7 +38,7 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
   const isFinished = order.status === 50;
   const isCanceled = Boolean(order.documento_cancelado);
   const documentLabel =
-    (order.tipo_fac_rem ?? 10) === 20 ? 'Recibo simple' : 'Factura';
+    (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
 
   return (
     <Pressable style={[styles.card, isFinished && styles.cardFinished, isCanceled && styles.cardCanceled]} onPress={onPress}>
