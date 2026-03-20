@@ -28,6 +28,11 @@
       "name": "Montblan",
       "shortName": "Montblan",
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "bec00089-7397-4de2-b5c0-b53f0b623934"
+      }
     }
   }
 }
