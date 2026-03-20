@@ -21,6 +21,7 @@ import { ordersApi } from '../services/ordersApi';
 
 type DraftLine = {
   id: string;
+  productoId: number | null;
   codigo: string;
   nombre: string;
   precio: number;
@@ -68,6 +69,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [instruccionesCredito, setInstruccionesCredito] = useState('');
   const [instruccionesAlmacen, setInstruccionesAlmacen] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
+  const [postfechado, setPostfechado] = useState(false);
+  const [fechaEntrega, setFechaEntrega] = useState('');
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [showProductDetails, setShowProductDetails] = useState(false);
   const [showAllLines, setShowAllLines] = useState(false);
@@ -135,6 +138,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         const item = pedidoResponse.item;
 
         setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
+        setPostfechado(Boolean(item.postfechado));
+        setFechaEntrega(item.postfechado ? item.fecha_entrega || '' : '');
         setClienteCondiciones(item.cliente_condiciones || '');
         setClienteCorreo(item.cliente_correo || '');
         setClienteRfc(item.cliente_rfc || '');
@@ -189,6 +194,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             const lineName = catalogProduct?.nombre || line.descripcion || code || 'Producto';
             return {
               id: `edit-${line.id}-${nowSeed}-${index}`,
+              productoId: catalogProduct?.id ?? null,
               codigo: code,
               nombre: lineName,
               precio: Number(line.precio || 0),
@@ -403,6 +409,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const addProduct = (producto: Producto) => {
     const line: DraftLine = {
       id: `${producto.id}-${Date.now()}`,
+      productoId: producto.id,
       codigo: producto.codigo,
       nombre: producto.nombre || 'Producto sin nombre',
       precio: Number(producto.precio_venta || 0),
@@ -538,6 +545,10 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       return 'Debes seleccionar un cliente.';
     }
 
+    if (postfechado && !fechaEntrega.trim()) {
+      return 'Debes capturar la fecha de entrega cuando el pedido es postfechado.';
+    }
+
     if (!direccion.trim()) {
       return 'Debes capturar la dirección del pedido.';
     }
@@ -589,6 +600,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           uso_cfdi: usoCfdi.trim() || undefined,
           cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
+          postfechado: postfechado ? 1 : 0,
+          fecha_entrega: postfechado && fechaEntrega.trim() ? fechaEntrega.trim() : undefined,
           observaciones,
           instrucciones_credito: instruccionesCredito.trim() || undefined,
           instrucciones_almacen: instruccionesAlmacen.trim() || undefined,
@@ -692,6 +705,38 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         <Text style={styles.helper}>
           El número de pedido se asigna después en facturación por CXC, por eso no se captura en esta fase.
         </Text>
+
+        <Text style={styles.label}>Postfechado</Text>
+        <View style={[styles.toggleRow, styles.toggleRowCompact]}>
+          <Pressable
+            style={[styles.toggleButton, !postfechado && styles.toggleButtonActive]}
+            onPress={() => setPostfechado(false)}
+          >
+            <Text style={[styles.toggleLabel, !postfechado && styles.toggleLabelActive]}>No</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toggleButton, postfechado && styles.toggleButtonActive]}
+            onPress={() => setPostfechado(true)}
+          >
+            <Text style={[styles.toggleLabel, postfechado && styles.toggleLabelActive]}>Sí</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.helper}>
+          Solo los pedidos postfechados capturan fecha de entrega. Los pedidos normales ya no usan ese dato.
+        </Text>
+
+        {postfechado ? (
+          <>
+            <Text style={styles.label}>Fecha de entrega</Text>
+            <TextInput
+              value={fechaEntrega}
+              onChangeText={setFechaEntrega}
+              placeholder="YYYY-MM-DD"
+              style={styles.input}
+              autoCapitalize="none"
+            />
+          </>
+        ) : null}
 
         <Text style={styles.label}>Condiciones</Text>
         <TextInput
@@ -869,7 +914,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <TextInput
               value={instruccionesAlmacen}
               onChangeText={setInstruccionesAlmacen}
-              placeholder="Ej. material con corte / ruta sugerida"
+              placeholder="Ej. material con corte / cliente foráneo"
               style={[styles.input, styles.textareaCompact]}
               multiline
             />
@@ -948,7 +993,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               </View>
             </View>
             {line.disponibilidadInsuficiente ? (
-              <Text style={styles.inventoryWarning}>La cantidad solicitada supera el inventario disponible.</Text>
+              <Text style={styles.inventoryWarning}>
+                Inventario insuficiente para {line.codigo} - {line.nombre}. Puedes agregarlo al pedido, pero queda advertido.
+              </Text>
             ) : null}
             {showProductDetails || line.observaciones ? (
               <>
@@ -1036,6 +1083,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.modalItemMeta}>
                   Inv. disponible: {producto.inventario_disponible ?? getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
                 </Text>
+                {(producto.inventario_disponible ?? getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null)) <= 0 ? (
+                  <Text style={styles.inventoryWarning}>
+                    Inventario insuficiente para {producto.codigo} - {producto.nombre || 'Sin nombre'}.
+                  </Text>
+                ) : null}
               </Pressable>
             ))}
           </ScrollView>

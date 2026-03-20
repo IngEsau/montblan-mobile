@@ -27,7 +27,10 @@ type DraftWarehouseLine = {
   codigo: string;
   descripcion: string;
   cantidad: number;
+  precio: number;
+  importeOriginal: number;
   inventarioDisponible: number | null;
+  largo: number | null;
   surtidoInput: string;
   rolloInput: string;
 };
@@ -38,7 +41,10 @@ function buildLine(line: PedidoDetalleLinea): DraftWarehouseLine {
     codigo: line.codigo || '-',
     descripcion: line.descripcion || '',
     cantidad: Number(line.cantidad || 0),
+    precio: Number(line.precio || 0),
+    importeOriginal: Number(line.importe || 0),
     inventarioDisponible: line.inventario_disponible,
+    largo: line.largo ?? null,
     surtidoInput: String(line.surtido ?? 0),
     rolloInput: String(line.rollo ?? 0),
   };
@@ -46,6 +52,16 @@ function buildLine(line: PedidoDetalleLinea): DraftWarehouseLine {
 
 function isAlmacenStatusComplete(value: string | null | undefined) {
   return (value || '').trim().toUpperCase() === 'COMPLETO';
+}
+
+function isPostfechadoLocked(order: Pedido | null) {
+  if (!order?.postfechado || !order.fecha_entrega) {
+    return false;
+  }
+
+  const unlockAt = new Date(`${order.fecha_entrega}T00:00:00`);
+  unlockAt.setDate(unlockAt.getDate() - 1);
+  return Date.now() < unlockAt.getTime();
 }
 
 export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderFormScreenProps) {
@@ -87,13 +103,27 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       lines.map((line) => {
         const surtido = Number(line.surtidoInput);
         const rollo = Number(line.rolloInput);
-        const faltante = Math.max(line.cantidad - (Number.isFinite(surtido) ? surtido : 0), 0);
+        const surtidoNormalizado = Number.isFinite(surtido) ? surtido : NaN;
+        const faltante = Math.max(line.cantidad - (Number.isFinite(surtidoNormalizado) ? surtidoNormalizado : 0), 0);
+        const sugerenciaSurtido =
+          line.largo !== null && line.largo > 0 && Number.isFinite(rollo) && rollo > 0
+            ? Number((rollo * line.largo).toFixed(4))
+            : null;
+        const cantidadFacturable = Number.isFinite(surtidoNormalizado) && surtidoNormalizado > 0 ? surtidoNormalizado : line.cantidad;
+        const importeCalculado = Number((cantidadFacturable * line.precio).toFixed(2));
+        const extraCantidad = Math.max(cantidadFacturable - line.cantidad, 0);
+        const extraMonto = Math.max(importeCalculado - line.importeOriginal, 0);
 
         return {
           ...line,
-          surtido: Number.isFinite(surtido) ? surtido : NaN,
+          surtido: surtidoNormalizado,
           rollo: Number.isFinite(rollo) ? rollo : NaN,
           faltante,
+          sugerenciaSurtido,
+          cantidadFacturable,
+          importeCalculado,
+          extraCantidad,
+          extraMonto,
         };
       }),
     [lines],
@@ -118,6 +148,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
     () => parsedLines.length > 0 && parsedLines.every((line) => Number.isFinite(line.surtido) && line.surtido >= line.cantidad),
     [parsedLines],
   );
+  const isPostdatedLocked = useMemo(() => isPostfechadoLocked(order), [order]);
   const isCompleteByOrder = useMemo(
     () => isAlmacenStatusComplete(order?.almacen_status),
     [order?.almacen_status],
@@ -150,10 +181,6 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         return `Surtido y rollos no pueden ser negativos (${line.codigo}).`;
       }
 
-      if (line.surtido > line.cantidad) {
-        return `El surtido no puede exceder la cantidad solicitada (${line.codigo}).`;
-      }
-
       if (line.inventarioDisponible !== null && line.surtido > line.inventarioDisponible) {
         return `El surtido excede inventario disponible en ${line.codigo}.`;
       }
@@ -164,6 +191,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
 
   const saveWarehouseCapture = async () => {
     if (!token || isSaving) {
+      return;
+    }
+
+    if (isPostdatedLocked) {
+      setErrorMessage('El pedido postfechado solo puede capturarse 24 horas antes de la fecha de entrega.');
       return;
     }
 
@@ -192,7 +224,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       Alert.alert(
         'Almacén actualizado',
         response.standby
-          ? 'Pedido con surtido parcial. Puedes continuar capturando después.'
+          ? 'Pedido guardado con surtido parcial. Ya puedes enviarlo a FACTURACIÓN si así lo decide almacén.'
           : 'Pedido surtido completo. Ya puedes enviarlo a FACTURACIÓN.',
       );
     } catch (error) {
@@ -205,6 +237,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
 
   const sendToFacturacion = async () => {
     if (!token || !order || isSaving) {
+      return;
+    }
+
+    if (isPostdatedLocked) {
+      Alert.alert('Postfechado bloqueado', 'Este pedido solo puede avanzar 24 horas antes de la fecha de entrega.');
       return;
     }
 
@@ -243,6 +280,12 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       <Text style={styles.subtitle}>Pedido #{order.no_pedido || order.id}</Text>
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Total pedido: {formatMoney(order.total)}</Text>
+      {order.postfechado ? (
+        <Text style={styles.subtitle}>
+          Postfechado: Sí{order.fecha_entrega ? ` | Fecha desbloqueo: ${order.fecha_entrega}` : ''}
+        </Text>
+      ) : null}
+      {isPostdatedLocked ? <Text style={styles.error}>Este pedido postfechado todavía no puede editarse ni avanzar.</Text> : null}
 
       {parsedLines.map((line) => (
         <View key={line.id} style={styles.lineCard}>
@@ -251,6 +294,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           <Text style={styles.metaRow}>
             Cantidad solicitada: {line.cantidad} | Inventario: {line.inventarioDisponible ?? '-'}
           </Text>
+          <Text style={styles.metaRow}>Precio: {formatMoney(line.precio)} | Importe actual: {formatMoney(line.importeCalculado)}</Text>
 
           <View style={styles.inputRow}>
             <View style={styles.inputWrap}>
@@ -276,6 +320,16 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
               <Text style={styles.faltanteValue}>{line.faltante.toFixed(2)}</Text>
             </View>
           </View>
+          {line.sugerenciaSurtido !== null ? (
+            <Text style={styles.helperInfo}>
+              Sugerencia: {line.rollo.toFixed(2)} rollos x {line.largo?.toFixed(2)} de largo = {line.sugerenciaSurtido.toFixed(2)} de surtido.
+            </Text>
+          ) : null}
+          {line.extraCantidad > 0 ? (
+            <Text style={styles.extraInfo}>
+              Extra surtido: +{line.extraCantidad.toFixed(2)} | Incremento: +{formatMoney(line.extraMonto)}
+            </Text>
+          ) : null}
         </View>
       ))}
 
@@ -295,15 +349,15 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         <Text style={styles.saveLabel}>{isSaving ? 'Guardando...' : 'Guardar captura'}</Text>
       </Pressable>
 
-      {isCompleteByOrder ? (
+      {order.almacen_status ? (
         <Pressable style={styles.sendButton} onPress={sendToFacturacion} disabled={isSaving}>
           <Text style={styles.sendLabel}>Enviar a Facturación</Text>
         </Pressable>
       ) : null}
 
-      {!isCompleteByOrder ? (
+      {!order.almacen_status ? (
         <Text style={styles.helperInfo}>
-          Para enviar a FACTURACIÓN, primero guarda la captura y confirma que el estatus quede en COMPLETO.
+          Guarda la captura de almacén primero. El pedido puede continuar aunque el surtido quede parcial.
         </Text>
       ) : null}
     </ScrollView>
@@ -415,6 +469,12 @@ const styles = StyleSheet.create({
     color: palette.primaryDark,
     fontFamily: typography.bold,
     marginTop: 4,
+  },
+  extraInfo: {
+    marginTop: 6,
+    color: '#a5621d',
+    fontFamily: typography.medium,
+    fontSize: 12,
   },
   error: {
     marginTop: 10,

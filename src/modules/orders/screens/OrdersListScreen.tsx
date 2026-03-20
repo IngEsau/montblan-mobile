@@ -102,6 +102,8 @@ export function OrdersListScreen({
             : undefined
         : warehouseStage === 'processing'
           ? WAREHOUSE_STATUS
+          : warehouseStage === 'postdated'
+            ? WAREHOUSE_STATUS
           : warehouseStage === 'finished'
             ? FINISHED_STATUS
             : undefined;
@@ -116,6 +118,8 @@ export function OrdersListScreen({
             : cxcStage === 'billing'
               ? 'CXC: Facturación'
               : 'CXC: Todos'
+        : warehouseStage === 'postdated'
+            ? 'Almacén: Postfechados'
         : warehouseStage === 'finished'
             ? 'Pedidos terminados'
             : warehouseStage === 'processing'
@@ -123,6 +127,26 @@ export function OrdersListScreen({
               : 'Almacén: Todos',
     [cxcStage, mode, warehouseStage],
   );
+
+  const filteredOrders = useMemo(() => {
+    if (mode !== 'warehouse') {
+      return orders;
+    }
+
+    if (warehouseStage === 'processing') {
+      return orders.filter((item) => item.status === WAREHOUSE_STATUS && !item.postfechado);
+    }
+
+    if (warehouseStage === 'postdated') {
+      return orders.filter((item) => item.status === WAREHOUSE_STATUS && Boolean(item.postfechado));
+    }
+
+    if (warehouseStage === 'finished') {
+      return orders.filter((item) => item.status === FINISHED_STATUS);
+    }
+
+    return orders;
+  }, [mode, orders, warehouseStage]);
 
   const modeButtons = useMemo(
     () =>
@@ -245,6 +269,28 @@ export function OrdersListScreen({
               Terminado
             </Text>
           </Pressable>
+          <Pressable
+            style={[styles.stageButton, warehouseStage === 'postdated' && styles.stageButtonActive]}
+            onPress={() => setWarehouseStage('postdated')}
+          >
+            <Text
+              style={[
+                styles.stageButtonLabel,
+                warehouseStage === 'postdated' && styles.stageButtonLabelActive,
+              ]}
+            >
+              Postfechados
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {mode === 'warehouse' && warehouseStage === 'postdated' ? (
+        <View style={styles.finishedInfoCard}>
+          <Text style={styles.finishedInfoTitle}>Pedidos postfechados</Text>
+          <Text style={styles.finishedInfoText}>
+            Aquí aparecen los pedidos postfechados autorizados. Almacén puede verlos siempre, pero solo podrá editarlos o avanzarlos 24 horas antes de su fecha de entrega.
+          </Text>
         </View>
       ) : null}
 
@@ -253,7 +299,7 @@ export function OrdersListScreen({
           <Text style={styles.finishedInfoTitle}>Pedidos terminados</Text>
           <Text style={styles.finishedInfoText}>
             Aquí se concentran los pedidos ya cerrados dentro del flujo. Puedes abrirlos para revisar documento final,
-            ruta, entrega y detalle histórico sin mezclarlos con surtido pendiente.
+            entrega y detalle histórico sin mezclarlos con surtido pendiente.
           </Text>
         </View>
       ) : null}
@@ -325,7 +371,7 @@ export function OrdersListScreen({
         </View>
       ) : (
         <FlatList
-          data={orders}
+          data={filteredOrders}
           keyExtractor={(item) => String(item.id)}
           refreshControl={
             <RefreshControl
@@ -350,9 +396,11 @@ export function OrdersListScreen({
                       : cxcStage === 'billing'
                         ? 'No hay pedidos pendientes de facturación.'
                         : 'No hay pedidos visibles para CXC.'
+                  : warehouseStage === 'postdated'
+                    ? 'No hay pedidos postfechados visibles para almacén.'
                   : warehouseStage === 'finished'
                     ? 'No hay pedidos en fase Terminado.'
-                    : warehouseStage === 'processing'
+                  : warehouseStage === 'processing'
                       ? 'No hay pedidos pendientes de surtido en almacén.'
                       : 'No hay pedidos visibles para almacén.'
               }

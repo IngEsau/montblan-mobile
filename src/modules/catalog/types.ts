@@ -26,6 +26,7 @@ export type Producto = {
   codigo: string;
   nombre: string | null;
   precio_venta: number;
+  largo?: number | null;
   inventario_sa: number | null;
   inventario_cmb: number | null;
   inventario_disponible?: number | null;

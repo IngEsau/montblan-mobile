@@ -1,7 +1,7 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type OrderMode = 'sales' | 'warehouse' | 'cxc';
-export type WarehouseStage = 'all' | 'processing' | 'finished';
+export type WarehouseStage = 'all' | 'processing' | 'postdated' | 'finished';
 export type CxcStage = 'all' | 'authorization' | 'billing';
 
 export type AppTabParamList = {
