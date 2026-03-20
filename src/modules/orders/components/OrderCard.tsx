@@ -49,6 +49,7 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
             label={order.is_standby ? 'STANDBY' : order.status_label || 'SIN ESTADO'}
             tone={resolveStatusTone(order)}
           />
+          {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
           {isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
         </View>
       </View>

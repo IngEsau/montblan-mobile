@@ -117,6 +117,14 @@ export function OrderDetailScreen({
   }, [normalizedRole, user?.permissions]);
 
   const canSendToAuthorization = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
+  const isPostdatedLocked = useMemo(() => {
+    if (!order?.postfechado || !order.fecha_entrega) {
+      return false;
+    }
+    const unlockAt = new Date(`${order.fecha_entrega}T00:00:00`);
+    unlockAt.setDate(unlockAt.getDate() - 1);
+    return Date.now() < unlockAt.getTime();
+  }, [order?.fecha_entrega, order?.postfechado]);
   const canCaptureWarehouse = useMemo(
     () => mode === 'warehouse' && order?.status === 30,
     [mode, order?.status],
@@ -170,15 +178,14 @@ export function OrderDetailScreen({
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <View style={styles.badgesRow}>
           <StatusBadge label={order.status_label || 'SIN ESTADO'} tone={order.is_standby ? 'warning' : 'primary'} />
+          {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
           {order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
         </View>
 
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
-        <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text>
-        <Text style={styles.meta}>Ruta: {order.ruta || '-'}</Text>
-        <Text style={styles.meta}>Cobranza: {order.ctas_cobrar_status || '-'}</Text>
+        {order.postfechado ? <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
         <View style={styles.amountsRow}>
@@ -211,18 +218,12 @@ export function OrderDetailScreen({
             <Text style={styles.finishedSummaryLabel}>Documento final</Text>
             <Text style={styles.finishedSummaryValue}>{order.no_factura || 'Sin documento final'}</Text>
           </View>
-          <View style={styles.finishedSummaryRow}>
-            <Text style={styles.finishedSummaryLabel}>Ruta</Text>
-            <Text style={styles.finishedSummaryValue}>{order.ruta || 'Sin ruta capturada'}</Text>
-          </View>
-          <View style={styles.finishedSummaryRow}>
-            <Text style={styles.finishedSummaryLabel}>Entrega</Text>
-            <Text style={styles.finishedSummaryValue}>{formatDateYmd(order.fecha_entrega)}</Text>
-          </View>
-          <View style={styles.finishedSummaryRow}>
-            <Text style={styles.finishedSummaryLabel}>Cobranza</Text>
-            <Text style={styles.finishedSummaryValue}>{order.ctas_cobrar_status || '-'}</Text>
-          </View>
+          {order.postfechado ? (
+            <View style={styles.finishedSummaryRow}>
+              <Text style={styles.finishedSummaryLabel}>Entrega</Text>
+              <Text style={styles.finishedSummaryValue}>{formatDateYmd(order.fecha_entrega)}</Text>
+            </View>
+          ) : null}
           <View style={styles.finishedSummaryRow}>
             <Text style={styles.finishedSummaryLabel}>Documento cancelado</Text>
             <Text style={[styles.finishedSummaryValue, order.documento_cancelado && styles.finishedSummaryDanger]}>
@@ -288,10 +289,20 @@ export function OrderDetailScreen({
 
       {canCaptureWarehouse ? (
         <Pressable
-          style={[styles.actionButton, styles.actionButtonWarehouse]}
-          onPress={() => onOpenWarehouseCapture(order.id)}
+          style={[
+            styles.actionButton,
+            styles.actionButtonWarehouse,
+            isPostdatedLocked && styles.actionButtonDisabled,
+          ]}
+          onPress={() => {
+            if (isPostdatedLocked) {
+              Alert.alert('Postfechado bloqueado', 'Este pedido solo puede capturarse 24 horas antes de la fecha de entrega.');
+              return;
+            }
+            onOpenWarehouseCapture(order.id);
+          }}
         >
-          <Text style={styles.actionLabel}>Capturar surtido</Text>
+          <Text style={styles.actionLabel}>{isPostdatedLocked ? 'Postfechado bloqueado' : 'Capturar surtido'}</Text>
         </Pressable>
       ) : null}
 
@@ -478,6 +489,9 @@ const styles = StyleSheet.create({
   },
   actionButtonFinished: {
     backgroundColor: '#18a689',
+  },
+  actionButtonDisabled: {
+    backgroundColor: '#a8c8c0',
   },
   actionLabel: {
     color: '#fff',

@@ -15,6 +15,7 @@ export type PedidoListItem = {
   ctas_cobrar_status: string | null;
   almacen_status: string | null;
   documento_cancelado?: boolean;
+  postfechado?: boolean;
   subtotal: number;
   iva: number;
   total: number;
@@ -39,6 +40,7 @@ export type PedidoDetalleLinea = {
   inventario_cmb: number | null;
   inventario_disponible: number | null;
   disponibilidad_ok: boolean | null;
+  largo?: number | null;
 };
 
 export type PedidoDireccion = {
@@ -58,6 +60,7 @@ export type PedidoDireccion = {
 export type Pedido = PedidoListItem & {
   ruta: string | null;
   fecha_entrega: string | null;
+  postfechado?: boolean;
   vendedor: string | null;
   cliente_telefono: string | null;
   cliente_correo: string | null;
@@ -92,7 +95,6 @@ export type PedidoDetailResponse = {
 export type PedidoCreatePayload = {
   pedido: {
     no_cliente: string;
-    no_pedido?: string;
     cliente_razon_social: string;
     cliente_telefono?: string;
     cliente_correo?: string;
@@ -100,6 +102,7 @@ export type PedidoCreatePayload = {
     uso_cfdi?: string;
     cliente_condiciones?: string;
     tipo_fac_rem: number;
+    postfechado?: number;
     fecha_entrega?: string;
     observaciones?: string;
     instrucciones_credito?: string;
@@ -237,7 +240,6 @@ export type PedidoDeletePagoResponse = {
 
 export type PedidoCxcUpdatePayload = {
   no_factura?: string;
-  ctas_cobrar_status?: number;
 };
 
 export type PedidoCxcUpdateResponse = {
