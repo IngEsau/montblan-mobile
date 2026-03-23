@@ -16,6 +16,7 @@ export type PedidoListItem = {
   almacen_status: string | null;
   documento_cancelado?: boolean;
   postfechado?: boolean;
+  venta_especial?: boolean;
   subtotal: number;
   iva: number;
   total: number;
@@ -102,6 +103,7 @@ export type PedidoCreatePayload = {
     uso_cfdi?: string;
     cliente_condiciones?: string;
     tipo_fac_rem: number;
+    venta_especial?: number;
     postfechado?: number;
     fecha_entrega?: string;
     observaciones?: string;

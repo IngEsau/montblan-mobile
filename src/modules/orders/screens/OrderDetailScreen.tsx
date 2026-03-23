@@ -204,6 +204,7 @@ export function OrderDetailScreen({
         <View style={styles.badgesRow}>
           <StatusBadge label={order.status_label || 'SIN ESTADO'} tone={resolveStatusTone(order)} />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
+          {order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
           {order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
         </View>
@@ -211,6 +212,7 @@ export function OrderDetailScreen({
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
         {order.postfechado ? <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text> : null}
+        {order.venta_especial ? <Text style={styles.meta}>Venta especial: Sí (+3%)</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
         <View style={styles.amountsRow}>
