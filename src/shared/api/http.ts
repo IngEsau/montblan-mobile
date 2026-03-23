@@ -20,12 +20,18 @@ type RequestOptions = {
   body?: unknown;
 };
 
+function isFormData(body: unknown): body is FormData {
+  return typeof FormData !== 'undefined' && body instanceof FormData;
+}
+
 function buildHeaders(token?: string | null, body?: unknown) {
   const headers: Record<string, string> = {
     Accept: 'application/json',
   };
 
-  headers['Content-Type'] = 'application/json';
+  if (!isFormData(body)) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -55,7 +61,9 @@ export async function apiRequest<T>(
     body:
       body === undefined
         ? undefined
-        : JSON.stringify(body),
+        : isFormData(body)
+          ? body
+          : JSON.stringify(body),
   });
 
   const rawText = await response.text();
