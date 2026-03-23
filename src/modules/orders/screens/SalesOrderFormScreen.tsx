@@ -36,6 +36,8 @@ type SalesOrderFormScreenProps = {
   orderId?: number;
 };
 
+const VENTA_ESPECIAL_FACTOR = 1.03;
+
 export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScreenProps) {
   const { token, user } = useAuth();
   const isEditMode = typeof orderId === 'number';
@@ -67,6 +69,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [instruccionesCredito, setInstruccionesCredito] = useState('');
   const [instruccionesAlmacen, setInstruccionesAlmacen] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
+  const [ventaEspecial, setVentaEspecial] = useState(false);
   const [postfechado, setPostfechado] = useState(false);
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [showOptionalFields, setShowOptionalFields] = useState(false);
@@ -110,6 +113,18 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     return Number((tipo === 10 ? cmb : sa).toFixed(4));
   }, []);
 
+  const calculateVentaEspecialPrice = useCallback((precioBase: number) => {
+    return Number((Number(precioBase || 0) * VENTA_ESPECIAL_FACTOR).toFixed(2));
+  }, []);
+
+  const resolveProductoPrice = useCallback(
+    (producto: Producto | null | undefined, isSpecial: boolean = ventaEspecial) => {
+      const precioBase = Number(producto?.precio_venta || 0);
+      return isSpecial ? calculateVentaEspecialPrice(precioBase) : Number(precioBase.toFixed(2));
+    },
+    [calculateVentaEspecialPrice, ventaEspecial],
+  );
+
   const loadFormData = useCallback(async () => {
     if (!token) {
       return;
@@ -135,6 +150,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         const item = pedidoResponse.item;
 
         setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
+        setVentaEspecial(Boolean(item.venta_especial));
         setPostfechado(Boolean(item.postfechado));
         setFechaEntrega(item.postfechado ? item.fecha_entrega || '' : '');
         setClienteCondiciones(item.cliente_condiciones || '');
@@ -401,7 +417,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       productoId: producto.id,
       codigo: producto.codigo,
       nombre: producto.nombre || 'Producto sin nombre',
-      precio: Number(producto.precio_venta || 0),
+      precio: resolveProductoPrice(producto),
       cantidad: '1',
       descripcion: producto.nombre || producto.codigo,
       inventarioSa: producto.inventario_sa ?? null,
@@ -420,6 +436,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         }
 
         if (field === 'precio') {
+          if (ventaEspecial) {
+            return line;
+          }
           return {
             ...line,
             precio: Number(value || 0),
@@ -433,6 +452,26 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       }),
     );
   };
+
+  const updateVentaEspecial = useCallback(
+    (enabled: boolean) => {
+      setVentaEspecial(enabled);
+      setLines((prev) =>
+        prev.map((line) => {
+          const producto = productos.find((item) => item.codigo === line.codigo);
+          if (!producto) {
+            return line;
+          }
+
+          return {
+            ...line,
+            precio: resolveProductoPrice(producto, enabled),
+          };
+        }),
+      );
+    },
+    [productos, resolveProductoPrice],
+  );
 
   const vendedorResolvido = useMemo(() => {
     const assignedName = selectedCliente?.asignado_a_nombre?.trim();
@@ -586,6 +625,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           uso_cfdi: usoCfdi.trim() || undefined,
           cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
+          venta_especial: ventaEspecial ? 1 : 0,
           postfechado: postfechado ? 1 : 0,
           fecha_entrega: postfechado && fechaEntrega.trim() ? fechaEntrega.trim() : undefined,
           observaciones,
@@ -688,6 +728,26 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
           </View>
         </View>
+        <Text style={styles.label}>Venta especial</Text>
+        <View style={[styles.toggleRow, styles.toggleRowCompact]}>
+          <Pressable
+            style={[styles.toggleButton, !ventaEspecial && styles.toggleButtonActive]}
+            onPress={() => updateVentaEspecial(false)}
+          >
+            <Text style={[styles.toggleLabel, !ventaEspecial && styles.toggleLabelActive]}>No</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.toggleButton, ventaEspecial && styles.toggleButtonActive]}
+            onPress={() => updateVentaEspecial(true)}
+          >
+            <Text style={[styles.toggleLabel, ventaEspecial && styles.toggleLabelActive]}>Sí</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.helper}>
+          {ventaEspecial
+            ? 'El precio se calcula automáticamente como precio base × 1.03 y no puede editarse manualmente.'
+            : 'Cuando la venta especial está activa, cada producto usa precio base × 1.03.'}
+        </Text>
         <Text style={styles.helper}>
           El número de pedido se asigna en autorización por CXC, por eso no se captura en esta fase.
         </Text>
@@ -950,6 +1010,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <Text style={[styles.inventorySummary, line.disponibilidadInsuficiente && styles.inventoryWarning]}>
               Inv. disponible: {line.inventarioDisponible ?? 0} | SA: {line.inventarioSa ?? 0} | CMB: {line.inventarioCmb ?? 0}
             </Text>
+            {ventaEspecial ? (
+              <Text style={styles.specialPriceHint}>
+                Precio base: {formatMoney(Number((Number(line.precio || 0) / VENTA_ESPECIAL_FACTOR).toFixed(2)))} → Venta especial: {formatMoney(Number(line.precio || 0))}
+              </Text>
+            ) : null}
 
             <View style={styles.lineRow}>
               <View style={styles.lineInputWrap}>
@@ -967,7 +1032,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                   value={String(line.precio)}
                   onChangeText={(value) => updateLine(line.id, 'precio', value.replace(',', '.'))}
                   keyboardType="decimal-pad"
-                  style={styles.lineInput}
+                  style={[styles.lineInput, ventaEspecial && styles.lineInputReadonly]}
+                  editable={!ventaEspecial}
                 />
               </View>
             </View>
@@ -1046,7 +1112,12 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               <Pressable key={producto.id} style={styles.modalItem} onPress={() => addProduct(producto)}>
                 <Text style={styles.modalItemTitle}>{producto.codigo}</Text>
                 <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
-                <Text style={styles.modalItemPrice}>{formatMoney(producto.precio_venta)}</Text>
+                <Text style={styles.modalItemPrice}>{formatMoney(resolveProductoPrice(producto))}</Text>
+                {ventaEspecial ? (
+                  <Text style={styles.modalItemMeta}>
+                    Base: {formatMoney(producto.precio_venta)} → Venta especial: {formatMoney(resolveProductoPrice(producto))}
+                  </Text>
+                ) : null}
                 <Text style={styles.modalItemMeta}>
                   Inv. disponible: {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
                 </Text>
@@ -1413,6 +1484,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.medium,
     fontSize: 12,
     marginTop: 6,
+  },
+  specialPriceHint: {
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
+    fontSize: 11,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  lineInputReadonly: {
+    backgroundColor: '#f5f5f5',
+    color: palette.mutedText,
   },
   totalsCard: {
     borderRadius: 12,
