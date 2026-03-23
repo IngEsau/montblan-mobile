@@ -15,8 +15,10 @@ import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
 import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
+import { EvidenceSection } from '../components/EvidenceSection';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido } from '../types';
+import { Pedido, PedidoAdjuntoUploadAsset, PedidoEvidenciaItem } from '../types';
+import { downloadEvidence, formatEvidenceSize, pickEvidenceFiles, previewEvidence } from '../utils/evidence';
 
 type CxcOrderFormScreenProps = {
   orderId: number;
@@ -47,6 +49,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const [noFacturaInput, setNoFacturaInput] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmInput, setCancelConfirmInput] = useState('');
+  const [pendingEvidence, setPendingEvidence] = useState<PedidoAdjuntoUploadAsset[]>([]);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -132,6 +136,31 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     ],
     [documentFieldLabel, documentoGlobalAplicado, documentoGuardado, noPedidoVisible, order?.no_pedido],
   );
+  const canViewEvidence = useMemo(
+    () => Boolean(order?.can_view_evidence ?? order?.can_upload_evidence ?? false),
+    [order?.can_upload_evidence, order?.can_view_evidence],
+  );
+  const canManageEvidence = useMemo(
+    () => Boolean(order?.can_manage_evidence ?? order?.can_upload_evidence ?? false),
+    [order?.can_manage_evidence, order?.can_upload_evidence],
+  );
+  const existingEvidence = useMemo<PedidoEvidenciaItem[]>(
+    () => (canViewEvidence ? order?.evidencias || [] : []),
+    [canViewEvidence, order?.evidencias],
+  );
+  const evidenceMaxFileSizeBytes = useMemo(
+    () =>
+      typeof order?.evidence_max_file_size_bytes === 'number'
+        ? order.evidence_max_file_size_bytes
+        : typeof order?.max_upload_bytes === 'number'
+          ? order.max_upload_bytes
+          : null,
+    [order?.evidence_max_file_size_bytes, order?.max_upload_bytes],
+  );
+  const evidenceMaxFileSizeLabel = useMemo(
+    () => order?.evidence_max_file_size_label || (evidenceMaxFileSizeBytes ? formatEvidenceSize(evidenceMaxFileSizeBytes) : null),
+    [evidenceMaxFileSizeBytes, order?.evidence_max_file_size_label],
+  );
 
   const fetchCxcData = useCallback(async () => {
     if (!token) {
@@ -147,6 +176,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       setNoFacturaInput(item.no_factura || '');
       setCancelConfirmInput('');
       setCancelReason('');
+      setPendingEvidence([]);
+      setEvidenceError(null);
 
       setErrorMessage(null);
     } catch (error) {
@@ -316,6 +347,106 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     );
   };
 
+  const addCxcEvidence = useCallback(async () => {
+    try {
+      const selected = await pickEvidenceFiles();
+      if (selected.length === 0) {
+        return;
+      }
+
+      const accepted: PedidoAdjuntoUploadAsset[] = [];
+      const rejected: string[] = [];
+
+      selected.forEach((asset) => {
+        if (evidenceMaxFileSizeBytes && typeof asset.size === 'number' && asset.size > evidenceMaxFileSizeBytes) {
+          rejected.push(`El archivo ${asset.name} excede el límite de ${evidenceMaxFileSizeLabel || formatEvidenceSize(evidenceMaxFileSizeBytes)}.`);
+          return;
+        }
+
+        accepted.push(asset);
+      });
+
+      if (accepted.length > 0) {
+        setPendingEvidence((prev) => {
+          const next = [...prev];
+          accepted.forEach((asset) => {
+            if (!next.some((item) => item.uri === asset.uri && item.name === asset.name)) {
+              next.push(asset);
+            }
+          });
+          return next;
+        });
+      }
+
+      if (rejected.length > 0) {
+        setEvidenceError(rejected.join('\n'));
+      } else {
+        setEvidenceError(null);
+      }
+    } catch (error) {
+      setEvidenceError(error instanceof Error ? error.message : 'No fue posible seleccionar evidencia.');
+    }
+  }, [evidenceMaxFileSizeBytes, evidenceMaxFileSizeLabel]);
+
+  const removePendingEvidence = useCallback((assetUri: string) => {
+    setPendingEvidence((prev) => prev.filter((item) => item.uri !== assetUri));
+  }, []);
+
+  const uploadPendingEvidence = async () => {
+    if (!token || !order || isBusy || pendingEvidence.length === 0 || !canManageEvidence) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    setEvidenceError(null);
+
+    try {
+      const response = await ordersApi.subirEvidencias(token, order.id, pendingEvidence);
+      const responseMessage = response.message || 'Evidencia cargada correctamente.';
+      setPendingEvidence([]);
+      await fetchCxcData();
+      Alert.alert('Evidencia actualizada', responseMessage);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible subir la evidencia.';
+      setEvidenceError(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const previewOrderEvidence = useCallback(
+    async (evidence: PedidoEvidenciaItem) => {
+      if (!token || !order) {
+        return;
+      }
+
+      try {
+        await previewEvidence(token, order.id, evidence);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No fue posible abrir la evidencia.';
+        Alert.alert('Error', message);
+      }
+    },
+    [order, token],
+  );
+
+  const downloadOrderEvidence = useCallback(
+    async (evidence: PedidoEvidenciaItem) => {
+      if (!token || !order) {
+        return;
+      }
+
+      try {
+        await downloadEvidence(token, order.id, evidence);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No fue posible descargar la evidencia.';
+        Alert.alert('Error', message);
+      }
+    },
+    [order, token],
+  );
+
   if (isLoading) {
     return (
       <View style={styles.loaderContainer}>
@@ -395,6 +526,24 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           </View>
         ))}
       </View>
+
+      <EvidenceSection
+        title="EVIDENCIA"
+        canView={canViewEvidence}
+        canManage={canManageEvidence}
+        evidences={existingEvidence}
+        pendingFiles={pendingEvidence}
+        evidenceMaxFileSizeLabel={evidenceMaxFileSizeLabel}
+        onAddFiles={canManageEvidence ? addCxcEvidence : undefined}
+        onRemovePendingFile={removePendingEvidence}
+        onUploadPendingFiles={canManageEvidence ? uploadPendingEvidence : undefined}
+        uploadButtonLabel="Subir evidencia"
+        uploading={isBusy}
+        onPreviewEvidence={previewOrderEvidence}
+        onDownloadEvidence={downloadOrderEvidence}
+      />
+
+      {evidenceError ? <Text style={styles.warningText}>{evidenceError}</Text> : null}
 
       {isAuthorizationStage ? (
         <>

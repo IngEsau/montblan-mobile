@@ -58,6 +58,16 @@ export type PedidoDireccion = {
   municipio: string | null;
 };
 
+export type PedidoEvidenciaItem = {
+  id: number;
+  nombre_original: string;
+  extension: string | null;
+  mime_type: string | null;
+  tamano_bytes: number;
+  expira_at: number | null;
+  previewable: boolean;
+};
+
 export type Pedido = PedidoListItem & {
   ruta: string | null;
   fecha_entrega: string | null;
@@ -82,6 +92,13 @@ export type Pedido = PedidoListItem & {
   documento_cancelado_at?: number | null;
   documento_cancelado_by?: number | null;
   documento_cancelado_by_username?: string | null;
+  can_view_evidence?: boolean;
+  can_manage_evidence?: boolean;
+  evidence_max_file_size_bytes?: number | null;
+  evidence_max_file_size_label?: string | null;
+  can_upload_evidence?: boolean;
+  max_upload_bytes?: number | null;
+  evidencias?: PedidoEvidenciaItem[];
   direccion?: PedidoDireccion | null;
   detalle: PedidoDetalleLinea[];
 };
@@ -272,6 +289,28 @@ export type PedidoRegistrarDocumentoResponse = {
     id_pedido_historial: number;
     numero_factura: string;
   };
+};
+
+export type PedidoAdjuntosResponse = {
+  ok: boolean;
+  message?: string;
+  saved_count?: number;
+  errors?: string[];
+  can_view_evidence: boolean;
+  can_manage_evidence: boolean;
+  evidence_max_file_size_bytes: number | null;
+  evidence_max_file_size_label: string | null;
+  items: PedidoEvidenciaItem[];
+  can_upload_evidence?: boolean;
+  max_upload_bytes?: number | null;
+};
+
+export type PedidoAdjuntoUploadAsset = {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+  size?: number | null;
+  file?: File;
 };
 
 export type WarehouseLineUpdateInput = {

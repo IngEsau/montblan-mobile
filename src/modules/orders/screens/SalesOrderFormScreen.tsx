@@ -4,12 +4,14 @@ import {
   Alert,
   Modal,
   Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { ApiError } from '../../../shared/api/http';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
@@ -18,6 +20,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { catalogApi } from '../../catalog/services/catalogApi';
 import { Cliente, CodigoPostalColonia, Producto } from '../../catalog/types';
 import { ordersApi } from '../services/ordersApi';
+import { PedidoAdjuntoUploadAsset, PedidoEvidenciaItem } from '../types';
 
 type DraftLine = {
   id: string;
@@ -37,6 +40,18 @@ type SalesOrderFormScreenProps = {
 };
 
 const VENTA_ESPECIAL_FACTOR = 1.03;
+
+function formatBytes(bytes?: number | null) {
+  const value = Number(bytes || 0);
+  if (!value || value <= 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const power = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const sized = value / 1024 ** power;
+  return `${sized.toFixed(power === 0 ? 0 : 2)} ${units[power]}`;
+}
 
 export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScreenProps) {
   const { token, user } = useAuth();
@@ -74,6 +89,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [showAllLines, setShowAllLines] = useState(false);
+  const [existingEvidence, setExistingEvidence] = useState<PedidoEvidenciaItem[]>([]);
+  const [pendingEvidence, setPendingEvidence] = useState<PedidoAdjuntoUploadAsset[]>([]);
+  const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(null);
+  const [canViewEvidence, setCanViewEvidence] = useState(true);
+  const [canManageEvidence, setCanManageEvidence] = useState(true);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
   const [isLookingUpPostalCode, setIsLookingUpPostalCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -153,6 +173,16 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setVentaEspecial(Boolean(item.venta_especial));
         setPostfechado(Boolean(item.postfechado));
         setFechaEntrega(item.postfechado ? item.fecha_entrega || '' : '');
+        setExistingEvidence(item.evidencias || []);
+        setMaxUploadBytes(
+          typeof item.evidence_max_file_size_bytes === 'number'
+            ? item.evidence_max_file_size_bytes
+            : typeof item.max_upload_bytes === 'number'
+              ? item.max_upload_bytes
+              : null,
+        );
+        setCanViewEvidence(Boolean(item.can_view_evidence ?? item.can_upload_evidence ?? true));
+        setCanManageEvidence(Boolean(item.can_manage_evidence ?? item.can_upload_evidence ?? true));
         setClienteCondiciones(item.cliente_condiciones || '');
         setClienteCorreo(item.cliente_correo || '');
         setClienteRfc(item.cliente_rfc || '');
@@ -218,6 +248,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           }),
         );
       }
+      if (!pedidoResponse?.item) {
+        setExistingEvidence([]);
+        setMaxUploadBytes(null);
+        const canSales = Boolean(user?.permissions?.can_sales);
+        setCanViewEvidence(canSales);
+        setCanManageEvidence(canSales);
+      }
 
       setErrorMessage(null);
     } catch (error) {
@@ -229,7 +266,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     } finally {
       setLoadingCatalogs(false);
     }
-  }, [applyClienteSelection, isEditMode, orderId, token]);
+  }, [applyClienteSelection, isEditMode, orderId, token, user?.permissions?.can_sales]);
 
   useEffect(() => {
     loadFormData();
@@ -523,6 +560,58 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     setLines((prev) => prev.filter((line) => line.id !== lineId));
   };
 
+  const removePendingEvidence = (uri: string) => {
+    setPendingEvidence((prev) => prev.filter((item) => item.uri !== uri));
+  };
+
+  const pickEvidence = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/jpeg', 'image/png', 'application/pdf'],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const rejected: string[] = [];
+      const picked = result.assets
+        .map((asset, index) => ({
+          uri: asset.uri,
+          name: asset.name || `evidencia-${Date.now()}-${index + 1}`,
+          mimeType: asset.mimeType || null,
+          size: typeof asset.size === 'number' ? asset.size : null,
+          file: Platform.OS === 'web' && asset.file instanceof File ? asset.file : undefined,
+        }))
+        .filter((asset) => {
+          if (maxUploadBytes && typeof asset.size === 'number' && asset.size > maxUploadBytes) {
+            rejected.push(`El archivo ${asset.name} excede el límite máximo de ${formatBytes(maxUploadBytes)}.`);
+            return false;
+          }
+
+          return true;
+        });
+
+      setPendingEvidence((prev) => {
+        const next = [...prev];
+        picked.forEach((asset) => {
+          if (!next.some((item) => item.uri === asset.uri && item.name === asset.name)) {
+            next.push(asset);
+          }
+        });
+        return next;
+      });
+
+      if (rejected.length > 0) {
+        Alert.alert('Algunos archivos no se agregaron', rejected.join('\n'));
+      }
+    } catch (error) {
+      Alert.alert('Error', 'No fue posible seleccionar archivos de evidencia.');
+    }
+  }, [maxUploadBytes]);
+
   const handleCodigoPostalChange = (value: string) => {
     const normalized = value.replace(/\D/g, '').slice(0, 6);
     setCodigoPostal(normalized);
@@ -662,9 +751,42 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           ? await ordersApi.update(token, orderId, payload)
           : await ordersApi.create(token, payload);
 
+      let evidenceMessage = '';
+      if (pendingEvidence.length > 0) {
+        try {
+          const evidenceResponse = await ordersApi.subirEvidencias(token, response.item.id, pendingEvidence);
+          setExistingEvidence(evidenceResponse.items || []);
+          setMaxUploadBytes(
+            typeof evidenceResponse.evidence_max_file_size_bytes === 'number'
+              ? evidenceResponse.evidence_max_file_size_bytes
+              : typeof evidenceResponse.max_upload_bytes === 'number'
+                ? evidenceResponse.max_upload_bytes
+                : maxUploadBytes,
+          );
+          setCanViewEvidence(Boolean(evidenceResponse.can_view_evidence ?? canViewEvidence));
+          setCanManageEvidence(
+            Boolean(evidenceResponse.can_manage_evidence ?? evidenceResponse.can_upload_evidence ?? canManageEvidence),
+          );
+          setPendingEvidence([]);
+
+          const warnings = Array.isArray(evidenceResponse.errors) ? evidenceResponse.errors.filter(Boolean) : [];
+          if (warnings.length > 0) {
+            evidenceMessage = `\n\nEvidencia: ${warnings.join(' ')}`;
+          } else if ((evidenceResponse.saved_count || 0) > 0) {
+            evidenceMessage =
+              (evidenceResponse.saved_count || 0) === 1
+                ? '\n\nSe cargó 1 evidencia.'
+                : `\n\nSe cargaron ${evidenceResponse.saved_count} evidencias.`;
+          }
+        } catch (error) {
+          const message = error instanceof ApiError ? error.message : 'No fue posible cargar la evidencia.';
+          evidenceMessage = `\n\nEvidencia: ${message}`;
+        }
+      }
+
       Alert.alert(
         isEditMode ? 'Pedido actualizado' : 'Pedido creado',
-        response.message || (isEditMode ? 'Pedido actualizado correctamente.' : 'Pedido guardado correctamente.'),
+        (response.message || (isEditMode ? 'Pedido actualizado correctamente.' : 'Pedido guardado correctamente.')) + evidenceMessage,
       );
       onCreated(response.item.id);
     } catch (error) {
@@ -967,6 +1089,65 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           </View>
         </View>
       </View>
+
+      {(canViewEvidence || canManageEvidence || pendingEvidence.length > 0) ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeaderInline}>
+            <View>
+              <Text style={styles.sectionTitle}>EVIDENCIA</Text>
+              <Text style={styles.sectionMeta}>
+                Solo el vendedor responsable y CXC pueden verla.
+              </Text>
+            </View>
+            {canManageEvidence ? (
+              <Pressable style={styles.smallButton} onPress={pickEvidence}>
+                <Text style={styles.smallButtonLabel}>+ Agregar</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={styles.helper}>
+            Puedes cargar JPG, PNG o PDF.
+            {maxUploadBytes ? ` Tamaño máximo por archivo: ${formatBytes(maxUploadBytes)}.` : ''}
+            {' '}La evidencia se conserva por tiempo limitado en servidor.
+          </Text>
+
+          {pendingEvidence.length > 0 ? (
+            <View style={styles.evidenceList}>
+              {pendingEvidence.map((asset) => (
+                <View key={`${asset.uri}-${asset.name}`} style={styles.evidenceItem}>
+                  <View style={styles.evidenceInfo}>
+                    <Text style={styles.evidenceName}>{asset.name}</Text>
+                    <Text style={styles.evidenceMeta}>{formatBytes(asset.size)}</Text>
+                  </View>
+                  <Pressable onPress={() => removePendingEvidence(asset.uri)}>
+                    <Text style={styles.removeLine}>Quitar</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {canViewEvidence && existingEvidence.length > 0 ? (
+            <View style={styles.evidenceList}>
+              {existingEvidence.map((item) => (
+                <View key={`existing-${item.id}`} style={styles.evidenceItem}>
+                  <View style={styles.evidenceInfo}>
+                    <Text style={styles.evidenceName}>{item.nombre_original}</Text>
+                    <Text style={styles.evidenceMeta}>
+                      {(item.extension || '-').toUpperCase()} | {formatBytes(item.tamano_bytes)}
+                    </Text>
+                  </View>
+                  <Text style={styles.evidenceMeta}>Activa</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {pendingEvidence.length === 0 && (!canViewEvidence || existingEvidence.length === 0) ? (
+            <Text style={styles.helper}>Aún no hay evidencia cargada para este pedido.</Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={styles.sectionHeader}>
         <View>
@@ -1356,6 +1537,34 @@ const styles = StyleSheet.create({
   emptyLinesText: {
     color: palette.mutedText,
     fontFamily: typography.regular,
+  },
+  evidenceList: {
+    gap: 8,
+    marginTop: 6,
+  },
+  evidenceItem: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+  },
+  evidenceInfo: {
+    flex: 1,
+  },
+  evidenceName: {
+    color: palette.text,
+    fontFamily: typography.medium,
+    fontSize: 13,
+  },
+  evidenceMeta: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 11,
+    marginTop: 2,
   },
   lineCard: {
     borderWidth: 1,
