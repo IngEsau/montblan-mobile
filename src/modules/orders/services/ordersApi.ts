@@ -17,7 +17,9 @@ import {
   PedidoTransitionResponse,
   WarehouseUpdatePayload,
   WarehouseUpdateResponse,
+  PedidoAdjuntoUploadAsset,
 } from '../types';
+import { evidenceApi } from './evidenceApi';
 
 type ListOrdersParams = {
   search?: string;
@@ -136,4 +138,16 @@ export const ordersApi = {
       method: 'POST',
       body: payload,
     }),
+
+  evidencias: (token: string, orderId: number) => evidenceApi.list(token, orderId),
+
+  subirEvidencias: (token: string, orderId: number, assets: PedidoAdjuntoUploadAsset[]) =>
+    evidenceApi.upload(token, orderId, assets),
+
+  fetchAdjunto: (token: string, orderId: number, adjuntoId: number, action: 'preview' | 'download') =>
+    evidenceApi.fetch(token, orderId, adjuntoId, action),
+
+  previewEvidencePath: (orderId: number, adjuntoId: number) => evidenceApi.previewPath(orderId, adjuntoId),
+
+  downloadEvidencePath: (orderId: number, adjuntoId: number) => evidenceApi.downloadPath(orderId, adjuntoId),
 };

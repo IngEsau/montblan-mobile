@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { API_BASE_URL } from '../../../shared/config/env';
 import { ApiError } from '../../../shared/api/http';
 import { EmptyState } from '../../../shared/components/EmptyState';
 import { StatusBadge } from '../../../shared/components/StatusBadge';
@@ -17,7 +21,7 @@ import { typography } from '../../../shared/theme/typography';
 import { formatDateYmd, formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido } from '../types';
+import { Pedido, PedidoEvidenciaItem } from '../types';
 import { OrderMode } from '../../../navigation/types';
 
 type OrderDetailScreenProps = {
@@ -53,6 +57,22 @@ function resolveStatusTone(order: Pedido): 'primary' | 'warning' | 'danger' | 's
   return 'default';
 }
 
+function formatBytes(bytes?: number | null) {
+  const value = Number(bytes || 0);
+  if (!value || value <= 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const power = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const sized = value / 1024 ** power;
+  return `${sized.toFixed(power === 0 ? 0 : 2)} ${units[power]}`;
+}
+
+function sanitizeFileName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]+/g, '_');
+}
+
 export function OrderDetailScreen({
   orderId,
   mode,
@@ -65,6 +85,7 @@ export function OrderDetailScreen({
   const [order, setOrder] = useState<Pedido | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [activeEvidenceId, setActiveEvidenceId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchDetail = useCallback(async () => {
@@ -181,6 +202,74 @@ export function OrderDetailScreen({
     }
   };
 
+  const handleEvidenceAction = useCallback(
+    async (item: PedidoEvidenciaItem, mode: 'preview' | 'download') => {
+      if (!token || !order || activeEvidenceId === item.id) {
+        return;
+      }
+
+      setActiveEvidenceId(item.id);
+      try {
+        const effectiveMode = mode === 'preview' && !item.previewable ? 'download' : mode;
+
+        if (Platform.OS === 'web') {
+          const response = await ordersApi.fetchAdjunto(token, order.id, item.id, effectiveMode);
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+
+          if (effectiveMode === 'preview') {
+            window.open(objectUrl, '_blank', 'noopener,noreferrer');
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+          } else {
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = item.nombre_original || `evidencia-${item.id}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.setTimeout(() => URL.revokeObjectURL(objectUrl), 5_000);
+          }
+          return;
+        }
+
+        const baseDirectory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+        if (!baseDirectory) {
+          throw new Error('No hay un directorio temporal disponible en este dispositivo.');
+        }
+
+        const targetName = sanitizeFileName(item.nombre_original || `evidencia-${item.id}`);
+        const targetUri = `${baseDirectory}${Date.now()}-${targetName}`;
+        const sourceUrl =
+          effectiveMode === 'preview'
+            ? `${API_BASE_URL}${ordersApi.previewEvidencePath(order.id, item.id)}`
+            : `${API_BASE_URL}${ordersApi.downloadEvidencePath(order.id, item.id)}`;
+
+        const result = await FileSystem.downloadAsync(sourceUrl, targetUri, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: '*/*',
+          },
+        });
+
+        if (!(await Sharing.isAvailableAsync())) {
+          Alert.alert('Archivo listo', 'La evidencia se descargó, pero este dispositivo no soporta abrirla desde la app.');
+          return;
+        }
+
+        await Sharing.shareAsync(result.uri, {
+          mimeType: item.mime_type || undefined,
+          dialogTitle: effectiveMode === 'preview' ? 'Abrir evidencia' : 'Compartir evidencia',
+        });
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'No fue posible procesar la evidencia.';
+        Alert.alert('Error', message);
+      } finally {
+        setActiveEvidenceId(null);
+      }
+    },
+    [activeEvidenceId, order, token],
+  );
+
   if (isLoading) {
     return (
       <View style={styles.loaderContainer}>
@@ -235,6 +324,53 @@ export function OrderDetailScreen({
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Observaciones</Text>
           <Text style={styles.observaciones}>{order.observaciones}</Text>
+        </View>
+      ) : null}
+
+      {(order.can_view_evidence || order.can_manage_evidence) ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Evidencia</Text>
+          <Text style={styles.meta}>
+            Visible solo para el vendedor responsable y CXC.
+          </Text>
+          {(order.evidence_max_file_size_label || order.evidence_max_file_size_bytes || order.max_upload_bytes) ? (
+            <Text style={styles.meta}>
+              Tamaño máximo por archivo:{' '}
+              {order.evidence_max_file_size_label || formatBytes(order.evidence_max_file_size_bytes || order.max_upload_bytes)}
+            </Text>
+          ) : null}
+          {order.evidencias && order.evidencias.length > 0 ? (
+            order.evidencias.map((item) => (
+              <View key={`evidence-${item.id}`} style={styles.evidenceCard}>
+                <View style={styles.evidenceInfo}>
+                  <Text style={styles.evidenceName}>{item.nombre_original}</Text>
+                  <Text style={styles.evidenceMeta}>
+                    {(item.extension || '-').toUpperCase()} | {formatBytes(item.tamano_bytes)}
+                  </Text>
+                </View>
+                <View style={styles.evidenceActions}>
+                  <Pressable
+                    style={[styles.evidenceButton, styles.evidencePreviewButton]}
+                    onPress={() => handleEvidenceAction(item, 'preview')}
+                    disabled={activeEvidenceId === item.id}
+                  >
+                    <Text style={styles.evidenceButtonLabel}>
+                      {activeEvidenceId === item.id ? 'Procesando...' : 'Ver'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.evidenceButton, styles.evidenceDownloadButton]}
+                    onPress={() => handleEvidenceAction(item, 'download')}
+                    disabled={activeEvidenceId === item.id}
+                  >
+                    <Text style={styles.evidenceButtonLabel}>Descargar</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.meta}>Este pedido no tiene evidencia activa.</Text>
+          )}
         </View>
       ) : null}
 
@@ -446,6 +582,45 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.regular,
     lineHeight: 20,
+  },
+  evidenceCard: {
+    borderTopWidth: 1,
+    borderTopColor: '#edf2f6',
+    paddingVertical: 10,
+  },
+  evidenceInfo: {
+    marginBottom: 8,
+  },
+  evidenceName: {
+    color: palette.text,
+    fontFamily: typography.medium,
+    fontSize: 13,
+  },
+  evidenceMeta: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  evidenceActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  evidenceButton: {
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  evidencePreviewButton: {
+    backgroundColor: '#eef5fb',
+  },
+  evidenceDownloadButton: {
+    backgroundColor: '#def3ee',
+  },
+  evidenceButtonLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
   },
   finishedSummaryRow: {
     paddingVertical: 9,
