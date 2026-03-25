@@ -19,6 +19,7 @@ import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { catalogApi } from '../../catalog/services/catalogApi';
 import { Cliente, CodigoPostalColonia, Producto } from '../../catalog/types';
+import { downloadEvidence, previewEvidence } from '../utils/evidence';
 import { ordersApi } from '../services/ordersApi';
 import { PedidoAdjuntoUploadAsset, PedidoEvidenciaItem } from '../types';
 
@@ -612,6 +613,38 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     }
   }, [maxUploadBytes]);
 
+  const previewExistingEvidence = useCallback(
+    async (item: PedidoEvidenciaItem) => {
+      if (!token || !orderId) {
+        return;
+      }
+
+      try {
+        await previewEvidence(token, orderId, item);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'No fue posible abrir la evidencia.';
+        Alert.alert('Error', message);
+      }
+    },
+    [orderId, token],
+  );
+
+  const downloadExistingEvidence = useCallback(
+    async (item: PedidoEvidenciaItem) => {
+      if (!token || !orderId) {
+        return;
+      }
+
+      try {
+        await downloadEvidence(token, orderId, item);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'No fue posible descargar la evidencia.';
+        Alert.alert('Error', message);
+      }
+    },
+    [orderId, token],
+  );
+
   const handleCodigoPostalChange = (value: string) => {
     const normalized = value.replace(/\D/g, '').slice(0, 6);
     setCodigoPostal(normalized);
@@ -1137,7 +1170,22 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                       {(item.extension || '-').toUpperCase()} | {formatBytes(item.tamano_bytes)}
                     </Text>
                   </View>
-                  <Text style={styles.evidenceMeta}>Activa</Text>
+                  <View style={styles.evidenceActions}>
+                    {item.previewable ? (
+                      <Pressable
+                        style={[styles.evidenceButton, styles.evidencePreviewButton]}
+                        onPress={() => previewExistingEvidence(item)}
+                      >
+                        <Text style={[styles.evidenceButtonLabel, styles.evidenceButtonLabelLight]}>Ver</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      style={[styles.evidenceButton, styles.evidenceDownloadButton]}
+                      onPress={() => downloadExistingEvidence(item)}
+                    >
+                      <Text style={styles.evidenceButtonLabel}>Descargar</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
@@ -1565,6 +1613,34 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     fontSize: 11,
     marginTop: 2,
+  },
+  evidenceActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  evidenceButton: {
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  evidencePreviewButton: {
+    backgroundColor: palette.primary,
+  },
+  evidenceDownloadButton: {
+    backgroundColor: '#ecf2f8',
+    borderWidth: 1,
+    borderColor: '#d2dce8',
+  },
+  evidenceButtonLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+  },
+  evidenceButtonLabelLight: {
+    color: '#fff',
   },
   lineCard: {
     borderWidth: 1,
