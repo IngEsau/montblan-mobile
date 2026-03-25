@@ -74,6 +74,7 @@ export type Pedido = PedidoListItem & {
   ruta: string | null;
   fecha_entrega: string | null;
   postfechado?: boolean;
+  comentario_almacen?: string | null;
   vendedor: string | null;
   cliente_telefono: string | null;
   cliente_correo: string | null;
@@ -324,6 +325,7 @@ export type WarehouseLineUpdateInput = {
 export type WarehouseUpdatePayload = {
   detalle?: WarehouseLineUpdateInput[];
   fecha_entrega?: string;
+  comentario_almacen?: string;
 };
 
 export type WarehouseUpdateResponse = {

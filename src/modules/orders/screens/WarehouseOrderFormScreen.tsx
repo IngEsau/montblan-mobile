@@ -84,6 +84,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
   const [order, setOrder] = useState<Pedido | null>(null);
   const [lines, setLines] = useState<DraftWarehouseLine[]>([]);
   const [fechaEntregaInput, setFechaEntregaInput] = useState('');
+  const [comentarioAlmacen, setComentarioAlmacen] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -99,6 +100,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       setOrder(response.item);
       setLines(response.item.detalle.map(buildLine));
       setFechaEntregaInput(response.item.fecha_entrega || '');
+      setComentarioAlmacen(response.item.comentario_almacen || '');
       setErrorMessage(null);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -232,6 +234,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           surtido: Number(line.surtido.toFixed(4)),
           rollo: Number(line.rollo.toFixed(4)),
         })),
+        comentario_almacen: comentarioAlmacen.trim() || undefined,
       };
 
       const response = await ordersApi.updateWarehouse(token, orderId, payload);
@@ -274,10 +277,12 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
     try {
       const response = await ordersApi.updateWarehouse(token, orderId, {
         fecha_entrega: normalizedFechaEntrega,
+        comentario_almacen: comentarioAlmacen.trim() || undefined,
       });
       setOrder(response.item);
       setLines(response.item.detalle.map(buildLine));
       setFechaEntregaInput(response.item.fecha_entrega || normalizedFechaEntrega);
+      setComentarioAlmacen(response.item.comentario_almacen || comentarioAlmacen);
       Alert.alert('Fecha actualizada', response.message);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible actualizar la fecha de entrega.';
@@ -361,6 +366,22 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           Este pedido postfechado todavía no puede editarse ni avanzar, pero sí puedes ajustar la fecha de entrega desde aquí.
         </Text>
       ) : null}
+
+      <View style={styles.commentCard}>
+        <Text style={styles.commentTitle}>Comentario exclusivo de almacén</Text>
+        <Text style={styles.helperInfo}>
+          Este comentario solo puede editarse desde almacén y viaja con la actualización de captura o de fecha.
+        </Text>
+        <TextInput
+          value={comentarioAlmacen}
+          onChangeText={setComentarioAlmacen}
+          placeholder="Agrega un comentario operativo para almacén"
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+          style={styles.commentInput}
+        />
+      </View>
 
       {parsedLines.map((line) => (
         <View key={line.id} style={styles.lineCard}>
@@ -479,6 +500,34 @@ const styles = StyleSheet.create({
     fontFamily: typography.semiBold,
     fontSize: 14,
     marginBottom: 4,
+  },
+  commentCard: {
+    marginTop: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#d7e4f1',
+    borderRadius: 12,
+    backgroundColor: '#f7fbff',
+    padding: 12,
+  },
+  commentTitle: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  commentInput: {
+    minHeight: 92,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: palette.text,
+    fontFamily: typography.regular,
+    fontSize: 14,
   },
   lineCard: {
     marginTop: 10,

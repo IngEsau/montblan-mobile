@@ -327,6 +327,13 @@ export function OrderDetailScreen({
         </View>
       ) : null}
 
+      {order.comentario_almacen ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Comentario de almacén</Text>
+          <Text style={styles.observaciones}>{order.comentario_almacen}</Text>
+        </View>
+      ) : null}
+
       {(order.can_view_evidence || order.can_manage_evidence) ? (
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Evidencia</Text>
