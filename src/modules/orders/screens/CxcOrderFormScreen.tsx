@@ -90,6 +90,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => isFinishedStage && documentoGuardado && !documentoCancelado,
     [documentoCancelado, documentoGuardado, isFinishedStage],
   );
+  const isPostfechado = useMemo(() => Boolean(order?.postfechado), [order?.postfechado]);
+  const fechaEntregaVisible = useMemo(() => (order?.fecha_entrega || '').trim() || '-', [order?.fecha_entrega]);
   const noPedidoGuardado = useMemo(() => Boolean((order?.no_pedido || '').trim()), [order?.no_pedido]);
   const noPedidoVisible = useMemo(() => {
     const noPedido = (order?.no_pedido || '').trim();
@@ -472,18 +474,41 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
       <View style={styles.card}>
         <View style={styles.stageHeader}>
-          <View style={[styles.stageBadge, isAuthorizationStage ? styles.stageBadgeAuthorization : styles.stageBadgeBilling]}>
-            <Text style={[styles.stageBadgeLabel, isAuthorizationStage ? styles.stageBadgeLabelAuthorization : styles.stageBadgeLabelBilling]}>
-              {stageLabel}
-            </Text>
+          <View style={styles.stageBadgesRow}>
+            <View style={[styles.stageBadge, isAuthorizationStage ? styles.stageBadgeAuthorization : styles.stageBadgeBilling]}>
+              <Text style={[styles.stageBadgeLabel, isAuthorizationStage ? styles.stageBadgeLabelAuthorization : styles.stageBadgeLabelBilling]}>
+                {stageLabel}
+              </Text>
+            </View>
+            {isPostfechado ? (
+              <View style={[styles.stageBadge, styles.stageBadgePostdated]}>
+                <Text style={[styles.stageBadgeLabel, styles.stageBadgeLabelPostdated]}>POSTFECHADO</Text>
+              </View>
+            ) : null}
           </View>
+          {isPostfechado ? (
+            <View style={styles.postdatedContextCard}>
+              <Text style={styles.postdatedContextTitle}>Fecha de entrega</Text>
+              <Text style={styles.postdatedContextValue}>{fechaEntregaVisible}</Text>
+              <Text style={styles.postdatedContextNote}>
+                Este pedido conserva su condición de postfechado y CXC debe tener visible esta fecha durante la operación.
+              </Text>
+            </View>
+          ) : null}
           <Text style={styles.stageHelper}>
             {isAuthorizationStage
               ? 'CXC valida el pedido y lo libera a almacén.'
               : isBillingStage
                 ? 'CXC registra el documento final y cierra el flujo.'
-                : 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'}
+                : isFinishedStage
+                  ? 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'
+                  : 'Operación actual de CXC.'}
           </Text>
+          {isPostfechado ? (
+            <Text style={styles.postdatedHint}>
+              Pedido postfechado con entrega programada para {fechaEntregaVisible}.
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.amountsRow}>
@@ -519,6 +544,18 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Contexto del pedido</Text>
+        {isPostfechado ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Postfechado</Text>
+            <Text style={styles.noteValue}>Sí</Text>
+          </View>
+        ) : null}
+        {isPostfechado ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Fecha de entrega</Text>
+            <Text style={styles.noteValue}>{fechaEntregaVisible}</Text>
+          </View>
+        ) : null}
         {cxcNotes.map((item) => (
           <View key={item.label} style={styles.noteRow}>
             <Text style={styles.noteLabel}>{item.label}</Text>
@@ -770,18 +807,28 @@ const styles = StyleSheet.create({
   stageHeader: {
     marginBottom: 10,
   },
+  stageBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
   stageBadge: {
     alignSelf: 'flex-start',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    marginBottom: 8,
   },
   stageBadgeAuthorization: {
     backgroundColor: '#fff3d9',
   },
   stageBadgeBilling: {
     backgroundColor: '#def3ee',
+  },
+  stageBadgePostdated: {
+    backgroundColor: '#fff3d9',
+    borderWidth: 1,
+    borderColor: '#f3d08f',
   },
   stageBadgeLabel: {
     fontFamily: typography.bold,
@@ -793,10 +840,45 @@ const styles = StyleSheet.create({
   stageBadgeLabelBilling: {
     color: palette.primaryDark,
   },
+  stageBadgeLabelPostdated: {
+    color: '#9a6200',
+  },
+  postdatedContextCard: {
+    marginBottom: 8,
+    borderRadius: 10,
+    backgroundColor: '#fff9ef',
+    borderWidth: 1,
+    borderColor: '#f3d08f',
+    padding: 10,
+  },
+  postdatedContextTitle: {
+    color: '#9a6200',
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  postdatedContextValue: {
+    color: palette.text,
+    fontFamily: typography.bold,
+    fontSize: 14,
+  },
+  postdatedContextNote: {
+    marginTop: 6,
+    color: '#7a5b2b',
+    fontFamily: typography.regular,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   stageHelper: {
     color: palette.text,
     fontFamily: typography.medium,
     fontSize: 13,
+  },
+  postdatedHint: {
+    marginTop: 6,
+    color: '#9a6200',
+    fontFamily: typography.medium,
+    fontSize: 12,
   },
   meta: {
     color: palette.mutedText,
