@@ -79,6 +79,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Guardar remisión' : 'Guardar factura'),
     [order?.tipo_fac_rem],
   );
+  const ventaEspecialAplicada = useMemo(() => Boolean(order?.venta_especial), [order?.venta_especial]);
   const finishActionLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con remisión' : 'Terminar pedido facturado'),
     [order?.tipo_fac_rem],
@@ -225,6 +226,30 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       await fetchCxcData();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el número de pedido.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const toggleVentaEspecial = async (aplicar: boolean) => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        venta_especial: aplicar ? 1 : 0,
+      });
+      Alert.alert(
+        aplicar ? 'Precio especial aplicado' : 'Precio especial retirado',
+        response.message,
+      );
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el precio especial.';
       setErrorMessage(message);
     } finally {
       setIsBusy(false);
@@ -459,6 +484,12 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Contexto del pedido</Text>
+        <View style={styles.noteRow}>
+          <Text style={styles.noteLabel}>Precio especial</Text>
+          <Text style={styles.noteValue}>
+            {ventaEspecialAplicada ? 'Sí (precio promedio + 3%)' : 'No aplicado'}
+          </Text>
+        </View>
         {isPostfechado ? (
           <View style={styles.noteRow}>
             <Text style={styles.noteLabel}>Postfechado</Text>
@@ -560,6 +591,38 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             ) : null}
             <Pressable style={styles.secondaryButton} onPress={saveDocumentoGlobal} disabled={isBusy}>
               <Text style={styles.secondaryButtonLabel}>{documentActionLabel}</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Precio especial</Text>
+            <Text style={styles.hint}>
+              CXC puede aplicar o retirar precio especial en FACTURACION usando la regla precio promedio + 3%.
+            </Text>
+            <View style={styles.summaryGrid}>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Estado actual</Text>
+                <Text style={styles.summaryValue}>
+                  {ventaEspecialAplicada ? 'Aplicado' : 'No aplicado'}
+                </Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Regla</Text>
+                <Text style={styles.summaryValue}>Precio promedio + 3%</Text>
+              </View>
+            </View>
+            <Pressable
+              style={[styles.secondaryButton, ventaEspecialAplicada ? styles.destructiveButton : styles.infoButton]}
+              onPress={() => toggleVentaEspecial(!ventaEspecialAplicada)}
+              disabled={isBusy}
+            >
+              <Text style={styles.primaryButtonLabel}>
+                {isBusy
+                  ? 'Procesando...'
+                  : ventaEspecialAplicada
+                    ? 'Quitar precio especial'
+                    : 'Aplicar precio especial'}
+              </Text>
             </Pressable>
           </View>
 
@@ -971,6 +1034,13 @@ const styles = StyleSheet.create({
   destructiveButton: {
     marginTop: 10,
     backgroundColor: '#b42318',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  infoButton: {
+    marginTop: 10,
+    backgroundColor: '#0f7a8a',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',

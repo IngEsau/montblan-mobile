@@ -301,7 +301,7 @@ export function OrderDetailScreen({
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
         {order.postfechado ? <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text> : null}
-        {order.venta_especial ? <Text style={styles.meta}>Venta especial: Sí (+3%)</Text> : null}
+        {order.venta_especial ? <Text style={styles.meta}>Precio especial aplicado: Sí (precio promedio + 3%)</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
         <View style={styles.amountsRow}>
@@ -426,6 +426,11 @@ export function OrderDetailScreen({
               <Text style={styles.metaRow}>
                 Rollos: {line.rollo ?? 0} | Inventario: {line.inventario_disponible ?? '-'}
               </Text>
+              {order.venta_especial && line.precio_especial != null ? (
+                <Text style={styles.metaRow}>
+                  Precio base: {formatMoney(line.precio_base ?? line.precio)} | Especial: {formatMoney(line.precio_especial)}
+                </Text>
+              ) : null}
             </View>
           ))
         )}
