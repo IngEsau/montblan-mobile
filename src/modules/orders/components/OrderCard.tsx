@@ -36,7 +36,8 @@ function resolveStatusTone(order: PedidoListItem): 'primary' | 'warning' | 'dang
 
 export function OrderCard({ order, onPress }: OrderCardProps) {
   const isFinished = order.status === 50;
-  const isCanceled = Boolean(order.documento_cancelado);
+  const isCanceled = order.status === 1 || Boolean(order.documento_cancelado);
+  const primaryStatusLabel = order.status === 1 ? 'CANCELADO' : order.is_standby ? 'STANDBY' : order.status_label || 'SIN ESTADO';
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
 
@@ -46,11 +47,11 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <View style={styles.badgesGroup}>
           <StatusBadge
-            label={order.is_standby ? 'STANDBY' : order.status_label || 'SIN ESTADO'}
+            label={primaryStatusLabel}
             tone={resolveStatusTone(order)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
-          {isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
+          {order.status !== 1 && Boolean(order.documento_cancelado) ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
         </View>
       </View>
 
