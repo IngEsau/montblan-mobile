@@ -320,7 +320,8 @@ export type WarehouseLineUpdateInput = {
 };
 
 export type WarehouseUpdatePayload = {
-  detalle: WarehouseLineUpdateInput[];
+  detalle?: WarehouseLineUpdateInput[];
+  fecha_entrega?: string;
 };
 
 export type WarehouseUpdateResponse = {

@@ -64,10 +64,26 @@ function isPostfechadoLocked(order: Pedido | null) {
   return Date.now() < unlockAt.getTime();
 }
 
+function isValidFechaEntregaInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return parsed.getTime() >= today.getTime();
+}
+
 export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderFormScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
   const [lines, setLines] = useState<DraftWarehouseLine[]>([]);
+  const [fechaEntregaInput, setFechaEntregaInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -82,6 +98,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       const response = await ordersApi.detail(token, orderId);
       setOrder(response.item);
       setLines(response.item.detalle.map(buildLine));
+      setFechaEntregaInput(response.item.fecha_entrega || '');
       setErrorMessage(null);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -235,6 +252,41 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
     }
   };
 
+  const saveFechaEntrega = async () => {
+    if (!token || !order || isSaving) {
+      return;
+    }
+
+    if (!order.postfechado) {
+      setErrorMessage('La fecha de entrega solo puede actualizarse cuando el pedido es postfechado.');
+      return;
+    }
+
+    const normalizedFechaEntrega = fechaEntregaInput.trim();
+    if (!isValidFechaEntregaInput(normalizedFechaEntrega)) {
+      setErrorMessage('Captura una fecha de entrega válida en formato YYYY-MM-DD y que no sea pasada.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSaving(true);
+
+    try {
+      const response = await ordersApi.updateWarehouse(token, orderId, {
+        fecha_entrega: normalizedFechaEntrega,
+      });
+      setOrder(response.item);
+      setLines(response.item.detalle.map(buildLine));
+      setFechaEntregaInput(response.item.fecha_entrega || normalizedFechaEntrega);
+      Alert.alert('Fecha actualizada', response.message);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible actualizar la fecha de entrega.';
+      setErrorMessage(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const sendToFacturacion = async () => {
     if (!token || !order || isSaving) {
       return;
@@ -281,11 +333,34 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Total pedido: {formatMoney(order.total)}</Text>
       {order.postfechado ? (
-        <Text style={styles.subtitle}>
-          Postfechado: Sí{order.fecha_entrega ? ` | Fecha desbloqueo: ${order.fecha_entrega}` : ''}
+        <>
+          <Text style={styles.subtitle}>
+            Postfechado: Sí{order.fecha_entrega ? ` | Fecha entrega: ${order.fecha_entrega}` : ''}
+          </Text>
+          <View style={styles.deliveryCard}>
+            <Text style={styles.deliveryTitle}>Fecha de entrega</Text>
+            <Text style={styles.helperInfo}>
+              Si el cliente quiere adelantar el pedido, almacén puede actualizar esta fecha sin abrir la edición completa.
+            </Text>
+            <TextInput
+              value={fechaEntregaInput}
+              onChangeText={setFechaEntregaInput}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.input}
+            />
+            <Pressable style={styles.deliveryButton} onPress={saveFechaEntrega} disabled={isSaving}>
+              <Text style={styles.deliveryButtonLabel}>{isSaving ? 'Guardando...' : 'Actualizar fecha de entrega'}</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+      {isPostdatedLocked ? (
+        <Text style={styles.error}>
+          Este pedido postfechado todavía no puede editarse ni avanzar, pero sí puedes ajustar la fecha de entrega desde aquí.
         </Text>
       ) : null}
-      {isPostdatedLocked ? <Text style={styles.error}>Este pedido postfechado todavía no puede editarse ni avanzar.</Text> : null}
 
       {parsedLines.map((line) => (
         <View key={line.id} style={styles.lineCard}>
@@ -390,6 +465,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     marginBottom: 2,
   },
+  deliveryCard: {
+    marginTop: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#d7ece8',
+    borderRadius: 12,
+    backgroundColor: '#eff8f6',
+    padding: 12,
+  },
+  deliveryTitle: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+    marginBottom: 4,
+  },
   lineCard: {
     marginTop: 10,
     borderWidth: 1,
@@ -488,6 +578,18 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     fontSize: 12,
     lineHeight: 18,
+  },
+  deliveryButton: {
+    marginTop: 10,
+    backgroundColor: palette.warning,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  deliveryButtonLabel: {
+    color: '#1f2328',
+    fontFamily: typography.semiBold,
+    fontSize: 14,
   },
   saveButton: {
     marginTop: 12,
