@@ -523,6 +523,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           return line;
         }
 
+        if (field === 'cantidad') {
+          return {
+            ...line,
+            cantidad: value.replace(/\D/g, ''),
+          };
+        }
+
         if (field === 'precio') {
           return {
             ...line,
@@ -754,7 +761,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
     for (const line of lines) {
       const qty = Number(line.cantidad);
-      if (!qty || qty <= 0) {
+      if (!qty || qty <= 0 || !Number.isInteger(qty)) {
         return `Cantidad inválida en producto ${line.codigo}.`;
       }
 
@@ -826,7 +833,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
           return {
             codigo: line.codigo,
-            cantidad: qty,
+            cantidad: Math.trunc(qty),
             precio: Number(line.precio.toFixed(2)),
             descripcion: line.descripcion,
             importe,
@@ -1338,8 +1345,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.lineLabel}>Cantidad</Text>
                 <TextInput
                   value={line.cantidad}
-                  onChangeText={(value) => updateLine(line.id, 'cantidad', value.replace(',', '.'))}
-                  keyboardType="decimal-pad"
+                  onChangeText={(value) => updateLine(line.id, 'cantidad', value)}
+                  keyboardType="number-pad"
                   style={styles.lineInput}
                 />
               </View>
