@@ -272,12 +272,29 @@ export type PedidoCxcUpdatePayload = {
   no_pedido?: string;
   no_factura?: string;
   venta_especial?: number;
+  split_ml?: PedidoCxcSplitMlPayload;
   detalle?: Array<{
     id: number;
     cantidad: number;
     surtido?: number | null;
     rollo?: number | null;
   }>;
+};
+
+export type PedidoCxcSplitMlClienteDestino = {
+  no_cliente: string;
+  cliente_razon_social: string;
+  vendedor?: string;
+};
+
+export type PedidoCxcSplitMlLineaInput = {
+  id: number;
+  cantidad: number;
+};
+
+export type PedidoCxcSplitMlPayload = {
+  cliente_destino: PedidoCxcSplitMlClienteDestino;
+  lineas: PedidoCxcSplitMlLineaInput[];
 };
 
 export type PedidoCxcUpdateResponse = {

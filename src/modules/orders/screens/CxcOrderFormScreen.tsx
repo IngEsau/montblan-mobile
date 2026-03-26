@@ -35,6 +35,14 @@ type MlAdjustmentLineDraft = {
   rolloInput: string;
 };
 
+type MlSplitLineDraft = {
+  id: number;
+  codigo: string;
+  descripcion: string;
+  cantidadOriginal: number;
+  cantidadDerivarInput: string;
+};
+
 function formatHistorialDate(value: string | null | undefined) {
   if (!value) {
     return '-';
@@ -63,6 +71,16 @@ function buildMlAdjustmentLine(line: PedidoDetalleLinea): MlAdjustmentLineDraft 
   };
 }
 
+function buildMlSplitLine(line: PedidoDetalleLinea): MlSplitLineDraft {
+  return {
+    id: line.id,
+    codigo: line.codigo || '-',
+    descripcion: line.descripcion || 'Sin descripción',
+    cantidadOriginal: Number(line.cantidad ?? 0),
+    cantidadDerivarInput: '',
+  };
+}
+
 function normalizeIntegerInput(value: string) {
   return value.replace(/[^\d]/g, '');
 }
@@ -81,8 +99,12 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const { token, user } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
   const [mlAdjustmentLines, setMlAdjustmentLines] = useState<MlAdjustmentLineDraft[]>([]);
+  const [mlSplitLines, setMlSplitLines] = useState<MlSplitLineDraft[]>([]);
   const [noPedidoInput, setNoPedidoInput] = useState('');
   const [noFacturaInput, setNoFacturaInput] = useState('');
+  const [splitNoClienteInput, setSplitNoClienteInput] = useState('');
+  const [splitRazonSocialInput, setSplitRazonSocialInput] = useState('');
+  const [splitVendedorInput, setSplitVendedorInput] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmInput, setCancelConfirmInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -220,8 +242,12 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       const item = detailResponse.item;
       setOrder(item);
       setMlAdjustmentLines(item.detalle.map(buildMlAdjustmentLine));
+      setMlSplitLines(item.detalle.map(buildMlSplitLine));
       setNoPedidoInput(item.no_pedido || '');
       setNoFacturaInput(item.no_factura || '');
+      setSplitNoClienteInput('');
+      setSplitRazonSocialInput('');
+      setSplitVendedorInput('');
       setCancelConfirmInput('');
       setCancelReason('');
 
@@ -252,6 +278,19 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     },
     [],
   );
+
+  const updateMlSplitLine = useCallback((lineId: number, value: string) => {
+    setMlSplitLines((prev) =>
+      prev.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              cantidadDerivarInput: normalizeIntegerInput(value),
+            }
+          : line,
+      ),
+    );
+  }, []);
 
   const removeMlAdjustmentLine = useCallback((lineId: number) => {
     setMlAdjustmentLines((prev) => prev.filter((line) => line.id !== lineId));
@@ -401,6 +440,84 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       await fetchCxcData();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible guardar el ajuste de partidas.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const saveMlSplit = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    if (!canEditMlFacturacion) {
+      setErrorMessage('No tienes permiso para derivar pedidos de Mercado Libre en facturación.');
+      return;
+    }
+
+    const noClienteDestino = splitNoClienteInput.trim();
+    const razonSocialDestino = splitRazonSocialInput.trim();
+    const vendedorDestino = splitVendedorInput.trim();
+
+    if (!noClienteDestino) {
+      setErrorMessage('Debes capturar el número de cliente destino.');
+      return;
+    }
+
+    if (!razonSocialDestino) {
+      setErrorMessage('Debes capturar la razón social del cliente destino.');
+      return;
+    }
+
+    const lineas: Array<{ id: number; cantidad: number }> = [];
+    for (const line of mlSplitLines) {
+      const cantidad = Number.parseInt(line.cantidadDerivarInput, 10);
+      if (!line.cantidadDerivarInput.trim()) {
+        continue;
+      }
+
+      if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        setErrorMessage(`La cantidad a derivar debe ser un entero mayor a 0 en la línea ${line.codigo}.`);
+        return;
+      }
+
+      if (cantidad > line.cantidadOriginal) {
+        setErrorMessage(`La cantidad a derivar no puede ser mayor que la cantidad original en la línea ${line.codigo}.`);
+        return;
+      }
+
+      lineas.push({
+        id: line.id,
+        cantidad,
+      });
+    }
+
+    if (lineas.length === 0) {
+      setErrorMessage('Debes capturar al menos una cantidad a derivar para crear el pedido normal.');
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        split_ml: {
+          cliente_destino: {
+            no_cliente: noClienteDestino,
+            cliente_razon_social: razonSocialDestino,
+            vendedor: vendedorDestino || undefined,
+          },
+          lineas,
+        },
+      });
+      Alert.alert(
+        'Pedido derivado creado',
+        `${response.message}\n\nLa derivación generó un pedido normal y no volverá a descontar inventario.`,
+      );
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible derivar el pedido normal desde Mercado Libre.';
       setErrorMessage(message);
     } finally {
       setIsBusy(false);
@@ -887,6 +1004,74 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             </Pressable>
           </View>
 
+          {canEditMlFacturacion ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Derivar pedido normal</Text>
+              <Text style={styles.hint}>
+                Captura un cliente destino y las cantidades que se transformarán en un pedido normal derivado. Esta derivación no vuelve a descontar inventario.
+              </Text>
+              <Text style={styles.fieldLabel}>No. cliente destino</Text>
+              <TextInput
+                value={splitNoClienteInput}
+                onChangeText={setSplitNoClienteInput}
+                style={styles.input}
+                placeholder="No. cliente del pedido derivado"
+                keyboardType="number-pad"
+              />
+              <Text style={styles.fieldLabel}>Razón social destino</Text>
+              <TextInput
+                value={splitRazonSocialInput}
+                onChangeText={setSplitRazonSocialInput}
+                style={styles.input}
+                placeholder="Razón social del cliente destino"
+              />
+              <Text style={styles.fieldLabel}>Vendedor destino</Text>
+              <TextInput
+                value={splitVendedorInput}
+                onChangeText={setSplitVendedorInput}
+                style={styles.input}
+                placeholder="Vendedor informativo para el pedido derivado"
+              />
+              <Text style={styles.mlAdjustmentWarning}>
+                Deja en blanco o en cero las líneas que no quieras derivar. Solo se enviarán las cantidades capturadas.
+              </Text>
+
+              {mlSplitLines.map((line, index) => (
+                <View key={line.id} style={styles.mlLineCard}>
+                  <View style={styles.mlLineHeader}>
+                    <View>
+                      <Text style={styles.mlLineTitle}>Partida {index + 1}</Text>
+                      <Text style={styles.mlLineSubtitle}>
+                        {line.codigo} | {line.descripcion}
+                      </Text>
+                    </View>
+                    <View style={styles.mlSplitOriginBox}>
+                      <Text style={styles.mlSplitOriginLabel}>Original</Text>
+                      <Text style={styles.mlSplitOriginValue}>{line.cantidadOriginal}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Cantidad a derivar</Text>
+                  <TextInput
+                    value={line.cantidadDerivarInput}
+                    onChangeText={(value) => updateMlSplitLine(line.id, value)}
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                  />
+                </View>
+              ))}
+
+              <Pressable
+                style={[styles.secondaryButton, isBusy && styles.primaryButtonDisabled]}
+                onPress={saveMlSplit}
+                disabled={isBusy}
+              >
+                <Text style={styles.secondaryButtonLabel}>{isBusy ? 'Derivando...' : 'Crear pedido derivado'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Historial de surtido usado para documento</Text>
             {(order.historial_documentos || []).length === 0 ? (
@@ -1153,6 +1338,22 @@ const styles = StyleSheet.create({
     color: palette.mutedText,
     fontFamily: typography.regular,
     fontSize: 12,
+    marginTop: 2,
+  },
+  mlSplitOriginBox: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  mlSplitOriginLabel: {
+    color: palette.mutedText,
+    fontFamily: typography.medium,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  mlSplitOriginValue: {
+    color: palette.primaryDark,
+    fontFamily: typography.bold,
+    fontSize: 16,
     marginTop: 2,
   },
   mlDeleteButton: {
