@@ -52,12 +52,29 @@ function formatBytes(bytes?: number | null) {
   return `${sized.toFixed(power === 0 ? 0 : 2)} ${units[power]}`;
 }
 
+const CLIENTE_TEMPORAL_MIN = 3000;
+const CLIENTE_TEMPORAL_MAX = 3999;
+
+function isTemporaryClientCode(value?: string | null) {
+  const normalized = (value || '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return false;
+  }
+
+  const numero = Number.parseInt(normalized, 10);
+  return numero >= CLIENTE_TEMPORAL_MIN && numero <= CLIENTE_TEMPORAL_MAX;
+}
+
 export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScreenProps) {
   const { token, user } = useAuth();
   const isEditMode = typeof orderId === 'number';
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const [noClienteInput, setNoClienteInput] = useState('');
+  const [clienteRazonSocialManual, setClienteRazonSocialManual] = useState('');
+  const [clienteTelefonoManual, setClienteTelefonoManual] = useState('');
+  const [manualVendedor, setManualVendedor] = useState('');
   const [clienteModalOpen, setClienteModalOpen] = useState(false);
   const [productoModalOpen, setProductoModalOpen] = useState(false);
   const [clienteSearch, setClienteSearch] = useState('');
@@ -102,6 +119,10 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       const preserveManualFields = options?.preserveManualFields === true;
 
       setSelectedCliente(cliente);
+      setNoClienteInput(cliente.clave || '');
+      setClienteRazonSocialManual(cliente.nombre_comercial || cliente.nombre || '');
+      setClienteTelefonoManual(cliente.telefono || '');
+      setManualVendedor(cliente.asignado_a_nombre || cliente.asignado_a_username || '');
       setDireccion((cliente.calle || '').trim());
 
       // El catálogo de clientes actual no expone ubicación completa,
@@ -124,6 +145,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     },
     [],
   );
+
+  const isTemporaryClient = useMemo(() => isTemporaryClientCode(noClienteInput), [noClienteInput]);
 
   const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null, tipo: 10 | 20) => {
     const sa = inventarioSa !== null ? Number(inventarioSa) : 0;
@@ -163,6 +186,10 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       if (pedidoResponse?.item) {
         const item = pedidoResponse.item;
 
+        setNoClienteInput(item.no_cliente || '');
+        setClienteRazonSocialManual(item.cliente_razon_social || '');
+        setClienteTelefonoManual(item.cliente_telefono || '');
+        setManualVendedor(item.vendedor || '');
         setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
         setPostfechado(Boolean(item.postfechado));
         setFechaEntrega(item.postfechado ? item.fecha_entrega || '' : '');
@@ -203,7 +230,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         }
 
         const selectedFromCatalog = clientesResponse.items.find((cliente) => cliente.clave === item.no_cliente);
-        if (selectedFromCatalog) {
+        if (isTemporaryClientCode(item.no_cliente || '')) {
+          setSelectedCliente(null);
+        } else if (selectedFromCatalog) {
           applyClienteSelection(selectedFromCatalog, { preserveManualFields: true });
           if (!item.direccion?.direccion) {
             setDireccion((selectedFromCatalog.calle || '').trim());
@@ -264,6 +293,35 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   useEffect(() => {
     loadFormData();
   }, [loadFormData]);
+
+  useEffect(() => {
+    const normalized = noClienteInput.trim();
+    if (!normalized) {
+      if (!isEditMode) {
+        setSelectedCliente(null);
+      }
+      return;
+    }
+
+    if (isTemporaryClientCode(normalized)) {
+      if (selectedCliente) {
+        setSelectedCliente(null);
+      }
+      return;
+    }
+
+    const matchedCliente = clientes.find((cliente) => cliente.clave === normalized) || null;
+    if (matchedCliente) {
+      if (selectedCliente?.id !== matchedCliente.id) {
+        applyClienteSelection(matchedCliente);
+      }
+      return;
+    }
+
+    if (selectedCliente && selectedCliente.clave !== normalized) {
+      setSelectedCliente(null);
+    }
+  }, [applyClienteSelection, clientes, isEditMode, noClienteInput, selectedCliente]);
 
   const estadosDisponibles = useMemo(() => {
     const map = new Map<number, { id: number; nombre: string }>();
@@ -481,6 +539,19 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   };
 
   const vendedorResolvido = useMemo(() => {
+    if (isTemporaryClient) {
+      const vendedorTemporal = manualVendedor.trim();
+      if (vendedorTemporal) {
+        return vendedorTemporal;
+      }
+
+      if (isEditMode) {
+        return '';
+      }
+
+      return user?.username || 'movil';
+    }
+
     const assignedName = selectedCliente?.asignado_a_nombre?.trim();
     if (assignedName) {
       return assignedName;
@@ -496,7 +567,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     }
 
     return user?.username || 'movil';
-  }, [isEditMode, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
+  }, [isEditMode, isTemporaryClient, manualVendedor, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
 
   const linesWithAvailability = useMemo(
     () =>
@@ -657,7 +728,15 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   };
 
   const validateForm = () => {
-    if (!selectedCliente) {
+    if (isTemporaryClient) {
+      if (!noClienteInput.trim()) {
+        return 'Debes capturar el número de cliente temporal.';
+      }
+
+      if (!clienteRazonSocialManual.trim()) {
+        return 'Debes capturar la razón social del cliente temporal.';
+      }
+    } else if (!selectedCliente) {
       return 'Debes seleccionar un cliente.';
     }
 
@@ -698,7 +777,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       return;
     }
 
-    if (!selectedCliente) {
+    if (!isTemporaryClient && !selectedCliente) {
       return;
     }
 
@@ -706,11 +785,19 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     setIsSubmitting(true);
 
     try {
+      const noClientePayload = isTemporaryClient ? noClienteInput.trim() : selectedCliente?.clave || '';
+      const razonSocialPayload = isTemporaryClient
+        ? clienteRazonSocialManual.trim()
+        : selectedCliente?.nombre_comercial || selectedCliente?.nombre || '';
+      const telefonoPayload = isTemporaryClient
+        ? clienteTelefonoManual.trim()
+        : selectedCliente?.telefono || '';
+
       const payload = {
         pedido: {
-          no_cliente: selectedCliente.clave,
-          cliente_razon_social: selectedCliente.nombre_comercial || selectedCliente.nombre,
-          cliente_telefono: selectedCliente.telefono || '',
+          no_cliente: noClientePayload,
+          cliente_razon_social: razonSocialPayload,
+          cliente_telefono: telefonoPayload,
           cliente_correo: clienteCorreo.trim() || undefined,
           cliente_rfc: clienteRfc.trim() || undefined,
           uso_cfdi: usoCfdi.trim() || undefined,
@@ -815,20 +902,57 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Datos principales</Text>
-        <Text style={styles.label}>Cliente</Text>
-        <Pressable
-          style={styles.selector}
-          onPress={() => {
-            setClienteSearch('');
-            setClienteModalOpen(true);
-          }}
-        >
-          <Text style={styles.selectorValue}>
-            {selectedCliente
-              ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
-              : 'Seleccionar cliente'}
+        <Text style={styles.label}>No. cliente</Text>
+        <TextInput
+          value={noClienteInput}
+          onChangeText={(value) => setNoClienteInput(value.replace(/\D/g, '').slice(0, 20))}
+          placeholder="Ej. 01931 o 3001"
+          style={styles.input}
+          keyboardType="number-pad"
+        />
+        {isTemporaryClient ? (
+          <Text style={styles.helper}>
+            Cliente temporal detectado. Completa sus datos manualmente; no se autollenará desde catálogo.
           </Text>
-        </Pressable>
+        ) : (
+          <>
+            <Text style={styles.label}>Cliente</Text>
+            <Pressable
+              style={styles.selector}
+              onPress={() => {
+                setClienteSearch('');
+                setClienteModalOpen(true);
+              }}
+            >
+              <Text style={styles.selectorValue}>
+                {selectedCliente
+                  ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
+                  : 'Seleccionar cliente'}
+              </Text>
+            </Pressable>
+          </>
+        )}
+
+        {isTemporaryClient ? (
+          <>
+            <Text style={styles.label}>Razón social</Text>
+            <TextInput
+              value={clienteRazonSocialManual}
+              onChangeText={setClienteRazonSocialManual}
+              placeholder="Nombre del cliente temporal"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Teléfono</Text>
+            <TextInput
+              value={clienteTelefonoManual}
+              onChangeText={setClienteTelefonoManual}
+              placeholder="Teléfono del cliente temporal"
+              style={styles.input}
+              keyboardType="phone-pad"
+            />
+          </>
+        ) : null}
 
         <View style={styles.lineRow}>
           <View style={styles.lineInputWrap}>
@@ -895,24 +1019,46 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           style={styles.input}
         />
 
-        <View style={styles.inlineInfoCard}>
-          <View style={styles.inlineInfoBlock}>
-            <Text style={styles.infoTitle}>Vendedor</Text>
-            <Text style={styles.infoValue}>
-              {vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}
+        {isTemporaryClient ? (
+          <>
+            <Text style={styles.label}>Vendedor</Text>
+            <TextInput
+              value={manualVendedor}
+              onChangeText={setManualVendedor}
+              placeholder="Captura el vendedor"
+              style={styles.input}
+            />
+            <Text style={styles.helper}>
+              Para clientes temporales el vendedor puede capturarse manualmente. Si lo dejas vacío, se usará el usuario actual.
             </Text>
-          </View>
-          <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
-            <Text style={styles.inlineToggleLabel}>
-              {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
+            <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
+              <Text style={styles.inlineToggleLabel}>
+                {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <View style={styles.inlineInfoCard}>
+              <View style={styles.inlineInfoBlock}>
+                <Text style={styles.infoTitle}>Vendedor</Text>
+                <Text style={styles.infoValue}>
+                  {vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}
+                </Text>
+              </View>
+              <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
+                <Text style={styles.inlineToggleLabel}>
+                  {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.helper}>
+              {selectedCliente?.asignado_a_id
+                ? 'El vendedor se toma del cliente asignado en catálogo.'
+                : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
             </Text>
-          </Pressable>
-        </View>
-        <Text style={styles.helper}>
-          {selectedCliente?.asignado_a_id
-            ? 'El vendedor se toma del cliente asignado en catálogo.'
-            : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
-        </Text>
+          </>
+        )}
 
         {showOptionalFields ? (
           <>
