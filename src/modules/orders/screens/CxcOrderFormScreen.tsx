@@ -19,6 +19,7 @@ import { EvidenceSection } from '../components/EvidenceSection';
 import { ordersApi } from '../services/ordersApi';
 import { Pedido, PedidoEvidenciaItem } from '../types';
 import { downloadEvidence, previewEvidence } from '../utils/evidence';
+import { resolveOrderStageLabel } from '../utils/status';
 
 type CxcOrderFormScreenProps = {
   orderId: number;
@@ -62,8 +63,13 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     [order?.tipo_fac_rem],
   );
   const stageLabel = useMemo(
-    () => (isAuthorizationStage ? 'AUTORIZACION' : isBillingStage ? 'FACTURACION' : isFinishedStage ? 'TERMINADO' : 'CXC'),
-    [isAuthorizationStage, isBillingStage, isFinishedStage],
+    () => {
+      if (isAuthorizationStage || isBillingStage || isFinishedStage) {
+        return resolveOrderStageLabel(order?.status);
+      }
+      return 'CXC';
+    },
+    [isAuthorizationStage, isBillingStage, isFinishedStage, order?.status],
   );
   const documentoGlobalAplicado = useMemo(() => {
     if (!order) {
