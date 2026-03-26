@@ -64,10 +64,27 @@ function isPostfechadoLocked(order: Pedido | null) {
   return Date.now() < unlockAt.getTime();
 }
 
+function isValidFechaEntregaInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return parsed.getTime() >= today.getTime();
+}
+
 export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderFormScreenProps) {
   const { token } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
   const [lines, setLines] = useState<DraftWarehouseLine[]>([]);
+  const [fechaEntregaInput, setFechaEntregaInput] = useState('');
+  const [comentarioAlmacen, setComentarioAlmacen] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -82,6 +99,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       const response = await ordersApi.detail(token, orderId);
       setOrder(response.item);
       setLines(response.item.detalle.map(buildLine));
+      setFechaEntregaInput(response.item.fecha_entrega || '');
+      setComentarioAlmacen(response.item.comentario_almacen || '');
       setErrorMessage(null);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -113,6 +132,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         const importeCalculado = Number((cantidadFacturable * line.precio).toFixed(2));
         const extraCantidad = Math.max(cantidadFacturable - line.cantidad, 0);
         const extraMonto = Math.max(importeCalculado - line.importeOriginal, 0);
+        const stockDespues =
+          line.inventarioDisponible !== null && Number.isFinite(surtidoNormalizado)
+            ? Number((line.inventarioDisponible - surtidoNormalizado).toFixed(4))
+            : null;
+        const inventarioExcedido = stockDespues !== null && stockDespues < -0.00001;
 
         return {
           ...line,
@@ -124,6 +148,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           importeCalculado,
           extraCantidad,
           extraMonto,
+          stockDespues,
+          inventarioExcedido,
         };
       }),
     [lines],
@@ -181,9 +207,6 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         return `Surtido y rollos no pueden ser negativos (${line.codigo}).`;
       }
 
-      if (line.inventarioDisponible !== null && line.surtido > line.inventarioDisponible) {
-        return `El surtido excede inventario disponible en ${line.codigo}.`;
-      }
     }
 
     return null;
@@ -215,6 +238,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           surtido: Number(line.surtido.toFixed(4)),
           rollo: Number(line.rollo.toFixed(4)),
         })),
+        comentario_almacen: comentarioAlmacen.trim() || undefined,
       };
 
       const response = await ordersApi.updateWarehouse(token, orderId, payload);
@@ -229,6 +253,43 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       );
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible guardar la captura de almacén.';
+      setErrorMessage(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveFechaEntrega = async () => {
+    if (!token || !order || isSaving) {
+      return;
+    }
+
+    if (!order.postfechado) {
+      setErrorMessage('La fecha de entrega solo puede actualizarse cuando el pedido es postfechado.');
+      return;
+    }
+
+    const normalizedFechaEntrega = fechaEntregaInput.trim();
+    if (!isValidFechaEntregaInput(normalizedFechaEntrega)) {
+      setErrorMessage('Captura una fecha de entrega válida en formato YYYY-MM-DD y que no sea pasada.');
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSaving(true);
+
+    try {
+      const response = await ordersApi.updateWarehouse(token, orderId, {
+        fecha_entrega: normalizedFechaEntrega,
+        comentario_almacen: comentarioAlmacen.trim() || undefined,
+      });
+      setOrder(response.item);
+      setLines(response.item.detalle.map(buildLine));
+      setFechaEntregaInput(response.item.fecha_entrega || normalizedFechaEntrega);
+      setComentarioAlmacen(response.item.comentario_almacen || comentarioAlmacen);
+      Alert.alert('Fecha actualizada', response.message);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible actualizar la fecha de entrega.';
       setErrorMessage(message);
     } finally {
       setIsSaving(false);
@@ -281,11 +342,50 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Total pedido: {formatMoney(order.total)}</Text>
       {order.postfechado ? (
-        <Text style={styles.subtitle}>
-          Postfechado: Sí{order.fecha_entrega ? ` | Fecha desbloqueo: ${order.fecha_entrega}` : ''}
+        <>
+          <Text style={styles.subtitle}>
+            Postfechado: Sí{order.fecha_entrega ? ` | Fecha entrega: ${order.fecha_entrega}` : ''}
+          </Text>
+          <View style={styles.deliveryCard}>
+            <Text style={styles.deliveryTitle}>Fecha de entrega</Text>
+            <Text style={styles.helperInfo}>
+              Si el cliente quiere adelantar el pedido, almacén puede actualizar esta fecha sin abrir la edición completa.
+            </Text>
+            <TextInput
+              value={fechaEntregaInput}
+              onChangeText={setFechaEntregaInput}
+              placeholder="YYYY-MM-DD"
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.input}
+            />
+            <Pressable style={styles.deliveryButton} onPress={saveFechaEntrega} disabled={isSaving}>
+              <Text style={styles.deliveryButtonLabel}>{isSaving ? 'Guardando...' : 'Actualizar fecha de entrega'}</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+      {isPostdatedLocked ? (
+        <Text style={styles.error}>
+          Este pedido postfechado todavía no puede editarse ni avanzar, pero sí puedes ajustar la fecha de entrega desde aquí.
         </Text>
       ) : null}
-      {isPostdatedLocked ? <Text style={styles.error}>Este pedido postfechado todavía no puede editarse ni avanzar.</Text> : null}
+
+      <View style={styles.commentCard}>
+        <Text style={styles.commentTitle}>Comentario exclusivo de almacén</Text>
+        <Text style={styles.helperInfo}>
+          Este comentario solo puede editarse desde almacén y viaja con la actualización de captura o de fecha.
+        </Text>
+        <TextInput
+          value={comentarioAlmacen}
+          onChangeText={setComentarioAlmacen}
+          placeholder="Agrega un comentario operativo para almacén"
+          multiline
+          numberOfLines={4}
+          textAlignVertical="top"
+          style={styles.commentInput}
+        />
+      </View>
 
       {parsedLines.map((line) => (
         <View key={line.id} style={styles.lineCard}>
@@ -293,6 +393,9 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           <Text style={styles.lineDesc}>{line.descripcion || 'Sin descripción'}</Text>
           <Text style={styles.metaRow}>
             Cantidad solicitada: {line.cantidad} | Inventario: {line.inventarioDisponible ?? '-'}
+          </Text>
+          <Text style={[styles.metaRow, line.inventarioExcedido ? styles.inventoryFeedbackDanger : styles.inventoryFeedbackOk]}>
+            Stock actual: {line.inventarioDisponible ?? '-'} | Surtido: {Number.isFinite(line.surtido) ? line.surtido.toFixed(2) : '-'} | Stock después: {line.stockDespues !== null ? line.stockDespues.toFixed(2) : '-'}
           </Text>
           <Text style={styles.metaRow}>Precio: {formatMoney(line.precio)} | Importe actual: {formatMoney(line.importeCalculado)}</Text>
 
@@ -328,6 +431,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           {line.extraCantidad > 0 ? (
             <Text style={styles.extraInfo}>
               Extra surtido: +{line.extraCantidad.toFixed(2)} | Incremento: +{formatMoney(line.extraMonto)}
+            </Text>
+          ) : null}
+          {line.inventarioExcedido ? (
+            <Text style={styles.inventoryFeedbackDanger}>
+              Feedback de inventario: el surtido proyecta un stock negativo. La captura puede guardarse, pero queda señalado para revisión operativa.
             </Text>
           ) : null}
         </View>
@@ -389,6 +497,49 @@ const styles = StyleSheet.create({
     color: palette.mutedText,
     fontFamily: typography.regular,
     marginBottom: 2,
+  },
+  deliveryCard: {
+    marginTop: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#d7ece8',
+    borderRadius: 12,
+    backgroundColor: '#eff8f6',
+    padding: 12,
+  },
+  deliveryTitle: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  commentCard: {
+    marginTop: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#d7e4f1',
+    borderRadius: 12,
+    backgroundColor: '#f7fbff',
+    padding: 12,
+  },
+  commentTitle: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  commentInput: {
+    minHeight: 92,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    color: palette.text,
+    fontFamily: typography.regular,
+    fontSize: 14,
   },
   lineCard: {
     marginTop: 10,
@@ -476,6 +627,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.medium,
     fontSize: 12,
   },
+  inventoryFeedbackOk: {
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  inventoryFeedbackDanger: {
+    color: palette.danger,
+    fontFamily: typography.medium,
+    fontSize: 12,
+    marginTop: 6,
+  },
   error: {
     marginTop: 10,
     color: palette.danger,
@@ -488,6 +650,18 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     fontSize: 12,
     lineHeight: 18,
+  },
+  deliveryButton: {
+    marginTop: 10,
+    backgroundColor: palette.warning,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  deliveryButtonLabel: {
+    color: '#1f2328',
+    fontFamily: typography.semiBold,
+    fontSize: 14,
   },
   saveButton: {
     marginTop: 12,

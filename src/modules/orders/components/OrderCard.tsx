@@ -4,39 +4,17 @@ import { StatusBadge } from '../../../shared/components/StatusBadge';
 import { formatMoney, formatUnixDateTime } from '../../../shared/utils/formatters';
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
+import { resolveOrderStatusLabel, resolveOrderStatusTone } from '../utils/status';
 
 type OrderCardProps = {
   order: PedidoListItem;
   onPress: () => void;
 };
 
-function resolveStatusTone(order: PedidoListItem): 'primary' | 'warning' | 'danger' | 'success' | 'default' {
-  if (order.is_standby) {
-    return 'warning';
-  }
-
-  if (order.status === 50) {
-    return 'success';
-  }
-
-  if (order.status === 1) {
-    return 'danger';
-  }
-
-  if (order.status === 30 || order.status === 20 || order.status === 45) {
-    return 'warning';
-  }
-
-  if (order.status === 10) {
-    return 'primary';
-  }
-
-  return 'default';
-}
-
 export function OrderCard({ order, onPress }: OrderCardProps) {
   const isFinished = order.status === 50;
-  const isCanceled = Boolean(order.documento_cancelado);
+  const isCanceled = order.status === 1 || Boolean(order.documento_cancelado);
+  const primaryStatusLabel = resolveOrderStatusLabel(order.status, order.status_label, order.is_standby);
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
 
@@ -46,11 +24,11 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <View style={styles.badgesGroup}>
           <StatusBadge
-            label={order.is_standby ? 'STANDBY' : order.status_label || 'SIN ESTADO'}
-            tone={resolveStatusTone(order)}
+            label={primaryStatusLabel}
+            tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
-          {isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
+          {order.status !== 1 && Boolean(order.documento_cancelado) ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
         </View>
       </View>
 

@@ -34,6 +34,8 @@ export type PedidoDetalleLinea = {
   descripcion: string | null;
   observaciones: string | null;
   precio: number;
+  precio_base?: number | null;
+  precio_especial?: number | null;
   importe: number;
   tipo_comprobante: number;
   tipo_comprobante_label: string | null;
@@ -72,6 +74,7 @@ export type Pedido = PedidoListItem & {
   ruta: string | null;
   fecha_entrega: string | null;
   postfechado?: boolean;
+  comentario_almacen?: string | null;
   vendedor: string | null;
   cliente_telefono: string | null;
   cliente_correo: string | null;
@@ -120,7 +123,6 @@ export type PedidoCreatePayload = {
     uso_cfdi?: string;
     cliente_condiciones?: string;
     tipo_fac_rem: number;
-    venta_especial?: number;
     postfechado?: number;
     fecha_entrega?: string;
     observaciones?: string;
@@ -260,6 +262,7 @@ export type PedidoDeletePagoResponse = {
 export type PedidoCxcUpdatePayload = {
   no_pedido?: string;
   no_factura?: string;
+  venta_especial?: number;
 };
 
 export type PedidoCxcUpdateResponse = {
@@ -320,7 +323,9 @@ export type WarehouseLineUpdateInput = {
 };
 
 export type WarehouseUpdatePayload = {
-  detalle: WarehouseLineUpdateInput[];
+  detalle?: WarehouseLineUpdateInput[];
+  fecha_entrega?: string;
+  comentario_almacen?: string;
 };
 
 export type WarehouseUpdateResponse = {

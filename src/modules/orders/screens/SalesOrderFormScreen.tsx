@@ -19,6 +19,7 @@ import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { catalogApi } from '../../catalog/services/catalogApi';
 import { Cliente, CodigoPostalColonia, Producto } from '../../catalog/types';
+import { downloadEvidence, previewEvidence } from '../utils/evidence';
 import { ordersApi } from '../services/ordersApi';
 import { PedidoAdjuntoUploadAsset, PedidoEvidenciaItem } from '../types';
 
@@ -39,8 +40,6 @@ type SalesOrderFormScreenProps = {
   orderId?: number;
 };
 
-const VENTA_ESPECIAL_FACTOR = 1.03;
-
 function formatBytes(bytes?: number | null) {
   const value = Number(bytes || 0);
   if (!value || value <= 0) {
@@ -53,12 +52,29 @@ function formatBytes(bytes?: number | null) {
   return `${sized.toFixed(power === 0 ? 0 : 2)} ${units[power]}`;
 }
 
+const CLIENTE_TEMPORAL_MIN = 3000;
+const CLIENTE_TEMPORAL_MAX = 3999;
+
+function isTemporaryClientCode(value?: string | null) {
+  const normalized = (value || '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return false;
+  }
+
+  const numero = Number.parseInt(normalized, 10);
+  return numero >= CLIENTE_TEMPORAL_MIN && numero <= CLIENTE_TEMPORAL_MAX;
+}
+
 export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScreenProps) {
   const { token, user } = useAuth();
   const isEditMode = typeof orderId === 'number';
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const [noClienteInput, setNoClienteInput] = useState('');
+  const [clienteRazonSocialManual, setClienteRazonSocialManual] = useState('');
+  const [clienteTelefonoManual, setClienteTelefonoManual] = useState('');
+  const [manualVendedor, setManualVendedor] = useState('');
   const [clienteModalOpen, setClienteModalOpen] = useState(false);
   const [productoModalOpen, setProductoModalOpen] = useState(false);
   const [clienteSearch, setClienteSearch] = useState('');
@@ -84,7 +100,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [instruccionesCredito, setInstruccionesCredito] = useState('');
   const [instruccionesAlmacen, setInstruccionesAlmacen] = useState('');
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
-  const [ventaEspecial, setVentaEspecial] = useState(false);
   const [postfechado, setPostfechado] = useState(false);
   const [fechaEntrega, setFechaEntrega] = useState('');
   const [showOptionalFields, setShowOptionalFields] = useState(false);
@@ -102,8 +117,19 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const applyClienteSelection = useCallback(
     (cliente: Cliente, options?: { preserveManualFields?: boolean }) => {
       const preserveManualFields = options?.preserveManualFields === true;
+      const suggestedSeller = (cliente.asignado_a_nombre || cliente.asignado_a_username || '').trim();
 
       setSelectedCliente(cliente);
+      setNoClienteInput(cliente.clave || '');
+      setClienteRazonSocialManual(cliente.nombre_comercial || cliente.nombre || '');
+      setClienteTelefonoManual(cliente.telefono || '');
+      setManualVendedor((prev) => {
+        if (preserveManualFields || prev.trim()) {
+          return prev;
+        }
+
+        return suggestedSeller;
+      });
       setDireccion((cliente.calle || '').trim());
 
       // El catálogo de clientes actual no expone ubicación completa,
@@ -127,22 +153,20 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     [],
   );
 
+  const isTemporaryClient = useMemo(() => isTemporaryClientCode(noClienteInput), [noClienteInput]);
+
   const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null, tipo: 10 | 20) => {
     const sa = inventarioSa !== null ? Number(inventarioSa) : 0;
     const cmb = inventarioCmb !== null ? Number(inventarioCmb) : 0;
     return Number((tipo === 10 ? cmb : sa).toFixed(4));
   }, []);
 
-  const calculateVentaEspecialPrice = useCallback((precioBase: number) => {
-    return Number((Number(precioBase || 0) * VENTA_ESPECIAL_FACTOR).toFixed(2));
-  }, []);
-
   const resolveProductoPrice = useCallback(
-    (producto: Producto | null | undefined, isSpecial: boolean = ventaEspecial) => {
+    (producto: Producto | null | undefined) => {
       const precioBase = Number(producto?.precio_venta || 0);
-      return isSpecial ? calculateVentaEspecialPrice(precioBase) : Number(precioBase.toFixed(2));
+      return Number(precioBase.toFixed(2));
     },
-    [calculateVentaEspecialPrice, ventaEspecial],
+    [],
   );
 
   const loadFormData = useCallback(async () => {
@@ -169,8 +193,11 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       if (pedidoResponse?.item) {
         const item = pedidoResponse.item;
 
+        setNoClienteInput(item.no_cliente || '');
+        setClienteRazonSocialManual(item.cliente_razon_social || '');
+        setClienteTelefonoManual(item.cliente_telefono || '');
+        setManualVendedor(item.vendedor || '');
         setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
-        setVentaEspecial(Boolean(item.venta_especial));
         setPostfechado(Boolean(item.postfechado));
         setFechaEntrega(item.postfechado ? item.fecha_entrega || '' : '');
         setExistingEvidence(item.evidencias || []);
@@ -210,7 +237,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         }
 
         const selectedFromCatalog = clientesResponse.items.find((cliente) => cliente.clave === item.no_cliente);
-        if (selectedFromCatalog) {
+        if (isTemporaryClientCode(item.no_cliente || '')) {
+          setSelectedCliente(null);
+        } else if (selectedFromCatalog) {
           applyClienteSelection(selectedFromCatalog, { preserveManualFields: true });
           if (!item.direccion?.direccion) {
             setDireccion((selectedFromCatalog.calle || '').trim());
@@ -271,6 +300,35 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   useEffect(() => {
     loadFormData();
   }, [loadFormData]);
+
+  useEffect(() => {
+    const normalized = noClienteInput.trim();
+    if (!normalized) {
+      if (!isEditMode) {
+        setSelectedCliente(null);
+      }
+      return;
+    }
+
+    if (isTemporaryClientCode(normalized)) {
+      if (selectedCliente) {
+        setSelectedCliente(null);
+      }
+      return;
+    }
+
+    const matchedCliente = clientes.find((cliente) => cliente.clave === normalized) || null;
+    if (matchedCliente) {
+      if (selectedCliente?.id !== matchedCliente.id) {
+        applyClienteSelection(matchedCliente);
+      }
+      return;
+    }
+
+    if (selectedCliente && selectedCliente.clave !== normalized) {
+      setSelectedCliente(null);
+    }
+  }, [applyClienteSelection, clientes, isEditMode, noClienteInput, selectedCliente]);
 
   const estadosDisponibles = useMemo(() => {
     const map = new Map<number, { id: number; nombre: string }>();
@@ -472,10 +530,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           return line;
         }
 
+        if (field === 'cantidad') {
+          return {
+            ...line,
+            cantidad: value.replace(/\D/g, ''),
+          };
+        }
+
         if (field === 'precio') {
-          if (ventaEspecial) {
-            return line;
-          }
           return {
             ...line,
             precio: Number(value || 0),
@@ -490,27 +552,12 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     );
   };
 
-  const updateVentaEspecial = useCallback(
-    (enabled: boolean) => {
-      setVentaEspecial(enabled);
-      setLines((prev) =>
-        prev.map((line) => {
-          const producto = productos.find((item) => item.codigo === line.codigo);
-          if (!producto) {
-            return line;
-          }
-
-          return {
-            ...line,
-            precio: resolveProductoPrice(producto, enabled),
-          };
-        }),
-      );
-    },
-    [productos, resolveProductoPrice],
-  );
-
   const vendedorResolvido = useMemo(() => {
+    const vendedorManual = manualVendedor.trim();
+    if (vendedorManual) {
+      return vendedorManual;
+    }
+
     const assignedName = selectedCliente?.asignado_a_nombre?.trim();
     if (assignedName) {
       return assignedName;
@@ -526,7 +573,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     }
 
     return user?.username || 'movil';
-  }, [isEditMode, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
+  }, [isEditMode, manualVendedor, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
 
   const linesWithAvailability = useMemo(
     () =>
@@ -612,6 +659,38 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     }
   }, [maxUploadBytes]);
 
+  const previewExistingEvidence = useCallback(
+    async (item: PedidoEvidenciaItem) => {
+      if (!token || !orderId) {
+        return;
+      }
+
+      try {
+        await previewEvidence(token, orderId, item);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'No fue posible abrir la evidencia.';
+        Alert.alert('Error', message);
+      }
+    },
+    [orderId, token],
+  );
+
+  const downloadExistingEvidence = useCallback(
+    async (item: PedidoEvidenciaItem) => {
+      if (!token || !orderId) {
+        return;
+      }
+
+      try {
+        await downloadEvidence(token, orderId, item);
+      } catch (error) {
+        const message = error instanceof ApiError ? error.message : 'No fue posible descargar la evidencia.';
+        Alert.alert('Error', message);
+      }
+    },
+    [orderId, token],
+  );
+
   const handleCodigoPostalChange = (value: string) => {
     const normalized = value.replace(/\D/g, '').slice(0, 6);
     setCodigoPostal(normalized);
@@ -655,7 +734,15 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   };
 
   const validateForm = () => {
-    if (!selectedCliente) {
+    if (isTemporaryClient) {
+      if (!noClienteInput.trim()) {
+        return 'Debes capturar el número de cliente temporal.';
+      }
+
+      if (!clienteRazonSocialManual.trim()) {
+        return 'Debes capturar la razón social del cliente temporal.';
+      }
+    } else if (!selectedCliente) {
       return 'Debes seleccionar un cliente.';
     }
 
@@ -673,7 +760,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
     for (const line of lines) {
       const qty = Number(line.cantidad);
-      if (!qty || qty <= 0) {
+      if (!qty || qty <= 0 || !Number.isInteger(qty)) {
         return `Cantidad inválida en producto ${line.codigo}.`;
       }
 
@@ -696,7 +783,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       return;
     }
 
-    if (!selectedCliente) {
+    if (!isTemporaryClient && !selectedCliente) {
       return;
     }
 
@@ -704,17 +791,24 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     setIsSubmitting(true);
 
     try {
+      const noClientePayload = isTemporaryClient ? noClienteInput.trim() : selectedCliente?.clave || '';
+      const razonSocialPayload = isTemporaryClient
+        ? clienteRazonSocialManual.trim()
+        : selectedCliente?.nombre_comercial || selectedCliente?.nombre || '';
+      const telefonoPayload = isTemporaryClient
+        ? clienteTelefonoManual.trim()
+        : selectedCliente?.telefono || '';
+
       const payload = {
         pedido: {
-          no_cliente: selectedCliente.clave,
-          cliente_razon_social: selectedCliente.nombre_comercial || selectedCliente.nombre,
-          cliente_telefono: selectedCliente.telefono || '',
+          no_cliente: noClientePayload,
+          cliente_razon_social: razonSocialPayload,
+          cliente_telefono: telefonoPayload,
           cliente_correo: clienteCorreo.trim() || undefined,
           cliente_rfc: clienteRfc.trim() || undefined,
           uso_cfdi: usoCfdi.trim() || undefined,
           cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
-          venta_especial: ventaEspecial ? 1 : 0,
           postfechado: postfechado ? 1 : 0,
           fecha_entrega: postfechado && fechaEntrega.trim() ? fechaEntrega.trim() : undefined,
           observaciones,
@@ -738,7 +832,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
           return {
             codigo: line.codigo,
-            cantidad: qty,
+            cantidad: Math.trunc(qty),
             precio: Number(line.precio.toFixed(2)),
             descripcion: line.descripcion,
             importe,
@@ -814,20 +908,57 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Datos principales</Text>
-        <Text style={styles.label}>Cliente</Text>
-        <Pressable
-          style={styles.selector}
-          onPress={() => {
-            setClienteSearch('');
-            setClienteModalOpen(true);
-          }}
-        >
-          <Text style={styles.selectorValue}>
-            {selectedCliente
-              ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
-              : 'Seleccionar cliente'}
+        <Text style={styles.label}>No. cliente</Text>
+        <TextInput
+          value={noClienteInput}
+          onChangeText={(value) => setNoClienteInput(value.replace(/\D/g, '').slice(0, 20))}
+          placeholder="Ej. 01931 o 3001"
+          style={styles.input}
+          keyboardType="number-pad"
+        />
+        {isTemporaryClient ? (
+          <Text style={styles.helper}>
+            Cliente temporal detectado. Completa sus datos manualmente; no se autollenará desde catálogo.
           </Text>
-        </Pressable>
+        ) : (
+          <>
+            <Text style={styles.label}>Cliente</Text>
+            <Pressable
+              style={styles.selector}
+              onPress={() => {
+                setClienteSearch('');
+                setClienteModalOpen(true);
+              }}
+            >
+              <Text style={styles.selectorValue}>
+                {selectedCliente
+                  ? `${selectedCliente.clave} - ${selectedCliente.nombre_comercial || selectedCliente.nombre}`
+                  : 'Seleccionar cliente'}
+              </Text>
+            </Pressable>
+          </>
+        )}
+
+        {isTemporaryClient ? (
+          <>
+            <Text style={styles.label}>Razón social</Text>
+            <TextInput
+              value={clienteRazonSocialManual}
+              onChangeText={setClienteRazonSocialManual}
+              placeholder="Nombre del cliente temporal"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Teléfono</Text>
+            <TextInput
+              value={clienteTelefonoManual}
+              onChangeText={setClienteTelefonoManual}
+              placeholder="Teléfono del cliente temporal"
+              style={styles.input}
+              keyboardType="phone-pad"
+            />
+          </>
+        ) : null}
 
         <View style={styles.lineRow}>
           <View style={styles.lineInputWrap}>
@@ -850,26 +981,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
           </View>
         </View>
-        <Text style={styles.label}>Venta especial</Text>
-        <View style={[styles.toggleRow, styles.toggleRowCompact]}>
-          <Pressable
-            style={[styles.toggleButton, !ventaEspecial && styles.toggleButtonActive]}
-            onPress={() => updateVentaEspecial(false)}
-          >
-            <Text style={[styles.toggleLabel, !ventaEspecial && styles.toggleLabelActive]}>No</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.toggleButton, ventaEspecial && styles.toggleButtonActive]}
-            onPress={() => updateVentaEspecial(true)}
-          >
-            <Text style={[styles.toggleLabel, ventaEspecial && styles.toggleLabelActive]}>Sí</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.helper}>
-          {ventaEspecial
-            ? 'El precio se calcula automáticamente como precio base × 1.03 y no puede editarse manualmente.'
-            : 'Cuando la venta especial está activa, cada producto usa precio base × 1.03.'}
-        </Text>
         <Text style={styles.helper}>
           El número de pedido se asigna en autorización por CXC, por eso no se captura en esta fase.
         </Text>
@@ -914,24 +1025,23 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           style={styles.input}
         />
 
-        <View style={styles.inlineInfoCard}>
-          <View style={styles.inlineInfoBlock}>
-            <Text style={styles.infoTitle}>Vendedor</Text>
-            <Text style={styles.infoValue}>
-              {vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}
-            </Text>
-          </View>
-          <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
-            <Text style={styles.inlineToggleLabel}>
-              {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
-            </Text>
-          </Pressable>
-        </View>
+        <Text style={styles.label}>Vendedor</Text>
+        <TextInput
+          value={manualVendedor}
+          onChangeText={setManualVendedor}
+          placeholder="Captura el vendedor"
+          style={styles.input}
+        />
         <Text style={styles.helper}>
           {selectedCliente?.asignado_a_id
-            ? 'El vendedor se toma del cliente asignado en catálogo.'
-            : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
+            ? 'Campo libre. Si lo dejas vacío, se usará como sugerencia el vendedor del cliente o el usuario actual.'
+            : 'Campo libre. Si lo dejas vacío, se usará el usuario actual.'}
         </Text>
+        <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
+          <Text style={styles.inlineToggleLabel}>
+            {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
+          </Text>
+        </Pressable>
 
         {showOptionalFields ? (
           <>
@@ -1137,7 +1247,22 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                       {(item.extension || '-').toUpperCase()} | {formatBytes(item.tamano_bytes)}
                     </Text>
                   </View>
-                  <Text style={styles.evidenceMeta}>Activa</Text>
+                  <View style={styles.evidenceActions}>
+                    {item.previewable ? (
+                      <Pressable
+                        style={[styles.evidenceButton, styles.evidencePreviewButton]}
+                        onPress={() => previewExistingEvidence(item)}
+                      >
+                        <Text style={[styles.evidenceButtonLabel, styles.evidenceButtonLabelLight]}>Ver</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      style={[styles.evidenceButton, styles.evidenceDownloadButton]}
+                      onPress={() => downloadExistingEvidence(item)}
+                    >
+                      <Text style={styles.evidenceButtonLabel}>Descargar</Text>
+                    </Pressable>
+                  </View>
                 </View>
               ))}
             </View>
@@ -1191,19 +1316,13 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <Text style={[styles.inventorySummary, line.disponibilidadInsuficiente && styles.inventoryWarning]}>
               Inv. disponible: {line.inventarioDisponible ?? 0} | SA: {line.inventarioSa ?? 0} | CMB: {line.inventarioCmb ?? 0}
             </Text>
-            {ventaEspecial ? (
-              <Text style={styles.specialPriceHint}>
-                Precio base: {formatMoney(Number((Number(line.precio || 0) / VENTA_ESPECIAL_FACTOR).toFixed(2)))} → Venta especial: {formatMoney(Number(line.precio || 0))}
-              </Text>
-            ) : null}
-
             <View style={styles.lineRow}>
               <View style={styles.lineInputWrap}>
                 <Text style={styles.lineLabel}>Cantidad</Text>
                 <TextInput
                   value={line.cantidad}
-                  onChangeText={(value) => updateLine(line.id, 'cantidad', value.replace(',', '.'))}
-                  keyboardType="decimal-pad"
+                  onChangeText={(value) => updateLine(line.id, 'cantidad', value)}
+                  keyboardType="number-pad"
                   style={styles.lineInput}
                 />
               </View>
@@ -1213,8 +1332,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                   value={String(line.precio)}
                   onChangeText={(value) => updateLine(line.id, 'precio', value.replace(',', '.'))}
                   keyboardType="decimal-pad"
-                  style={[styles.lineInput, ventaEspecial && styles.lineInputReadonly]}
-                  editable={!ventaEspecial}
+                  style={styles.lineInput}
                 />
               </View>
             </View>
@@ -1294,11 +1412,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.modalItemTitle}>{producto.codigo}</Text>
                 <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
                 <Text style={styles.modalItemPrice}>{formatMoney(resolveProductoPrice(producto))}</Text>
-                {ventaEspecial ? (
-                  <Text style={styles.modalItemMeta}>
-                    Base: {formatMoney(producto.precio_venta)} → Venta especial: {formatMoney(resolveProductoPrice(producto))}
-                  </Text>
-                ) : null}
                 <Text style={styles.modalItemMeta}>
                   Inv. disponible: {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
                 </Text>
@@ -1566,6 +1679,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  evidenceActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+  },
+  evidenceButton: {
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  evidencePreviewButton: {
+    backgroundColor: palette.primary,
+  },
+  evidenceDownloadButton: {
+    backgroundColor: '#ecf2f8',
+    borderWidth: 1,
+    borderColor: '#d2dce8',
+  },
+  evidenceButtonLabel: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+  },
+  evidenceButtonLabelLight: {
+    color: '#fff',
+  },
   lineCard: {
     borderWidth: 1,
     borderColor: palette.border,
@@ -1693,17 +1834,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.medium,
     fontSize: 12,
     marginTop: 6,
-  },
-  specialPriceHint: {
-    color: palette.primaryDark,
-    fontFamily: typography.medium,
-    fontSize: 11,
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  lineInputReadonly: {
-    backgroundColor: '#f5f5f5',
-    color: palette.mutedText,
   },
   totalsCard: {
     borderRadius: 12,

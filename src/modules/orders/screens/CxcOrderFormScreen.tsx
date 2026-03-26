@@ -17,8 +17,9 @@ import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { EvidenceSection } from '../components/EvidenceSection';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido, PedidoAdjuntoUploadAsset, PedidoEvidenciaItem } from '../types';
-import { downloadEvidence, formatEvidenceSize, pickEvidenceFiles, previewEvidence } from '../utils/evidence';
+import { Pedido, PedidoEvidenciaItem } from '../types';
+import { downloadEvidence, previewEvidence } from '../utils/evidence';
+import { resolveOrderStageLabel } from '../utils/status';
 
 type CxcOrderFormScreenProps = {
   orderId: number;
@@ -49,8 +50,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const [noFacturaInput, setNoFacturaInput] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmInput, setCancelConfirmInput] = useState('');
-  const [pendingEvidence, setPendingEvidence] = useState<PedidoAdjuntoUploadAsset[]>([]);
-  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -64,8 +63,13 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     [order?.tipo_fac_rem],
   );
   const stageLabel = useMemo(
-    () => (isAuthorizationStage ? 'AUTORIZACION' : isBillingStage ? 'FACTURACION' : isFinishedStage ? 'TERMINADO' : 'CXC'),
-    [isAuthorizationStage, isBillingStage, isFinishedStage],
+    () => {
+      if (isAuthorizationStage || isBillingStage || isFinishedStage) {
+        return resolveOrderStageLabel(order?.status);
+      }
+      return 'CXC';
+    },
+    [isAuthorizationStage, isBillingStage, isFinishedStage, order?.status],
   );
   const documentoGlobalAplicado = useMemo(() => {
     if (!order) {
@@ -81,6 +85,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Guardar remisión' : 'Guardar factura'),
     [order?.tipo_fac_rem],
   );
+  const ventaEspecialAplicada = useMemo(() => Boolean(order?.venta_especial), [order?.venta_especial]);
   const finishActionLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con remisión' : 'Terminar pedido facturado'),
     [order?.tipo_fac_rem],
@@ -90,6 +95,8 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => isFinishedStage && documentoGuardado && !documentoCancelado,
     [documentoCancelado, documentoGuardado, isFinishedStage],
   );
+  const isPostfechado = useMemo(() => Boolean(order?.postfechado), [order?.postfechado]);
+  const fechaEntregaVisible = useMemo(() => (order?.fecha_entrega || '').trim() || '-', [order?.fecha_entrega]);
   const noPedidoGuardado = useMemo(() => Boolean((order?.no_pedido || '').trim()), [order?.no_pedido]);
   const noPedidoVisible = useMemo(() => {
     const noPedido = (order?.no_pedido || '').trim();
@@ -141,25 +148,12 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     [order?.can_upload_evidence, order?.can_view_evidence],
   );
   const canManageEvidence = useMemo(
-    () => Boolean(order?.can_manage_evidence ?? order?.can_upload_evidence ?? false),
-    [order?.can_manage_evidence, order?.can_upload_evidence],
+    () => false,
+    [],
   );
   const existingEvidence = useMemo<PedidoEvidenciaItem[]>(
     () => (canViewEvidence ? order?.evidencias || [] : []),
     [canViewEvidence, order?.evidencias],
-  );
-  const evidenceMaxFileSizeBytes = useMemo(
-    () =>
-      typeof order?.evidence_max_file_size_bytes === 'number'
-        ? order.evidence_max_file_size_bytes
-        : typeof order?.max_upload_bytes === 'number'
-          ? order.max_upload_bytes
-          : null,
-    [order?.evidence_max_file_size_bytes, order?.max_upload_bytes],
-  );
-  const evidenceMaxFileSizeLabel = useMemo(
-    () => order?.evidence_max_file_size_label || (evidenceMaxFileSizeBytes ? formatEvidenceSize(evidenceMaxFileSizeBytes) : null),
-    [evidenceMaxFileSizeBytes, order?.evidence_max_file_size_label],
   );
 
   const fetchCxcData = useCallback(async () => {
@@ -176,8 +170,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       setNoFacturaInput(item.no_factura || '');
       setCancelConfirmInput('');
       setCancelReason('');
-      setPendingEvidence([]);
-      setEvidenceError(null);
 
       setErrorMessage(null);
     } catch (error) {
@@ -240,6 +232,30 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       await fetchCxcData();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el número de pedido.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const toggleVentaEspecial = async (aplicar: boolean) => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        venta_especial: aplicar ? 1 : 0,
+      });
+      Alert.alert(
+        aplicar ? 'Precio especial aplicado' : 'Precio especial retirado',
+        response.message,
+      );
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el precio especial.';
       setErrorMessage(message);
     } finally {
       setIsBusy(false);
@@ -347,74 +363,6 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     );
   };
 
-  const addCxcEvidence = useCallback(async () => {
-    try {
-      const selected = await pickEvidenceFiles();
-      if (selected.length === 0) {
-        return;
-      }
-
-      const accepted: PedidoAdjuntoUploadAsset[] = [];
-      const rejected: string[] = [];
-
-      selected.forEach((asset) => {
-        if (evidenceMaxFileSizeBytes && typeof asset.size === 'number' && asset.size > evidenceMaxFileSizeBytes) {
-          rejected.push(`El archivo ${asset.name} excede el límite de ${evidenceMaxFileSizeLabel || formatEvidenceSize(evidenceMaxFileSizeBytes)}.`);
-          return;
-        }
-
-        accepted.push(asset);
-      });
-
-      if (accepted.length > 0) {
-        setPendingEvidence((prev) => {
-          const next = [...prev];
-          accepted.forEach((asset) => {
-            if (!next.some((item) => item.uri === asset.uri && item.name === asset.name)) {
-              next.push(asset);
-            }
-          });
-          return next;
-        });
-      }
-
-      if (rejected.length > 0) {
-        setEvidenceError(rejected.join('\n'));
-      } else {
-        setEvidenceError(null);
-      }
-    } catch (error) {
-      setEvidenceError(error instanceof Error ? error.message : 'No fue posible seleccionar evidencia.');
-    }
-  }, [evidenceMaxFileSizeBytes, evidenceMaxFileSizeLabel]);
-
-  const removePendingEvidence = useCallback((assetUri: string) => {
-    setPendingEvidence((prev) => prev.filter((item) => item.uri !== assetUri));
-  }, []);
-
-  const uploadPendingEvidence = async () => {
-    if (!token || !order || isBusy || pendingEvidence.length === 0 || !canManageEvidence) {
-      return;
-    }
-
-    setIsBusy(true);
-    setErrorMessage(null);
-    setEvidenceError(null);
-
-    try {
-      const response = await ordersApi.subirEvidencias(token, order.id, pendingEvidence);
-      const responseMessage = response.message || 'Evidencia cargada correctamente.';
-      setPendingEvidence([]);
-      await fetchCxcData();
-      Alert.alert('Evidencia actualizada', responseMessage);
-    } catch (error) {
-      const message = error instanceof ApiError ? error.message : 'No fue posible subir la evidencia.';
-      setEvidenceError(message);
-    } finally {
-      setIsBusy(false);
-    }
-  };
-
   const previewOrderEvidence = useCallback(
     async (evidence: PedidoEvidenciaItem) => {
       if (!token || !order) {
@@ -472,18 +420,41 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
       <View style={styles.card}>
         <View style={styles.stageHeader}>
-          <View style={[styles.stageBadge, isAuthorizationStage ? styles.stageBadgeAuthorization : styles.stageBadgeBilling]}>
-            <Text style={[styles.stageBadgeLabel, isAuthorizationStage ? styles.stageBadgeLabelAuthorization : styles.stageBadgeLabelBilling]}>
-              {stageLabel}
-            </Text>
+          <View style={styles.stageBadgesRow}>
+            <View style={[styles.stageBadge, isAuthorizationStage ? styles.stageBadgeAuthorization : styles.stageBadgeBilling]}>
+              <Text style={[styles.stageBadgeLabel, isAuthorizationStage ? styles.stageBadgeLabelAuthorization : styles.stageBadgeLabelBilling]}>
+                {stageLabel}
+              </Text>
+            </View>
+            {isPostfechado ? (
+              <View style={[styles.stageBadge, styles.stageBadgePostdated]}>
+                <Text style={[styles.stageBadgeLabel, styles.stageBadgeLabelPostdated]}>POSTFECHADO</Text>
+              </View>
+            ) : null}
           </View>
+          {isPostfechado ? (
+            <View style={styles.postdatedContextCard}>
+              <Text style={styles.postdatedContextTitle}>Fecha de entrega</Text>
+              <Text style={styles.postdatedContextValue}>{fechaEntregaVisible}</Text>
+              <Text style={styles.postdatedContextNote}>
+                Este pedido conserva su condición de postfechado y CXC debe tener visible esta fecha durante la operación.
+              </Text>
+            </View>
+          ) : null}
           <Text style={styles.stageHelper}>
             {isAuthorizationStage
               ? 'CXC valida el pedido y lo libera a almacén.'
               : isBillingStage
                 ? 'CXC registra el documento final y cierra el flujo.'
-                : 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'}
+                : isFinishedStage
+                  ? 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'
+                  : 'Operación actual de CXC.'}
           </Text>
+          {isPostfechado ? (
+            <Text style={styles.postdatedHint}>
+              Pedido postfechado con entrega programada para {fechaEntregaVisible}.
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.amountsRow}>
@@ -519,6 +490,24 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Contexto del pedido</Text>
+        <View style={styles.noteRow}>
+          <Text style={styles.noteLabel}>Precio especial</Text>
+          <Text style={styles.noteValue}>
+            {ventaEspecialAplicada ? 'Sí (precio promedio + 3%)' : 'No aplicado'}
+          </Text>
+        </View>
+        {isPostfechado ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Postfechado</Text>
+            <Text style={styles.noteValue}>Sí</Text>
+          </View>
+        ) : null}
+        {isPostfechado ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Fecha de entrega</Text>
+            <Text style={styles.noteValue}>{fechaEntregaVisible}</Text>
+          </View>
+        ) : null}
         {cxcNotes.map((item) => (
           <View key={item.label} style={styles.noteRow}>
             <Text style={styles.noteLabel}>{item.label}</Text>
@@ -532,18 +521,10 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
         canView={canViewEvidence}
         canManage={canManageEvidence}
         evidences={existingEvidence}
-        pendingFiles={pendingEvidence}
-        evidenceMaxFileSizeLabel={evidenceMaxFileSizeLabel}
-        onAddFiles={canManageEvidence ? addCxcEvidence : undefined}
-        onRemovePendingFile={removePendingEvidence}
-        onUploadPendingFiles={canManageEvidence ? uploadPendingEvidence : undefined}
-        uploadButtonLabel="Subir evidencia"
         uploading={isBusy}
         onPreviewEvidence={previewOrderEvidence}
         onDownloadEvidence={downloadOrderEvidence}
       />
-
-      {evidenceError ? <Text style={styles.warningText}>{evidenceError}</Text> : null}
 
       {isAuthorizationStage ? (
         <>
@@ -616,6 +597,38 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             ) : null}
             <Pressable style={styles.secondaryButton} onPress={saveDocumentoGlobal} disabled={isBusy}>
               <Text style={styles.secondaryButtonLabel}>{documentActionLabel}</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Precio especial</Text>
+            <Text style={styles.hint}>
+              CXC puede aplicar o retirar precio especial en FACTURACION usando la regla precio promedio + 3%.
+            </Text>
+            <View style={styles.summaryGrid}>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Estado actual</Text>
+                <Text style={styles.summaryValue}>
+                  {ventaEspecialAplicada ? 'Aplicado' : 'No aplicado'}
+                </Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryLabel}>Regla</Text>
+                <Text style={styles.summaryValue}>Precio promedio + 3%</Text>
+              </View>
+            </View>
+            <Pressable
+              style={[styles.secondaryButton, ventaEspecialAplicada ? styles.destructiveButton : styles.infoButton]}
+              onPress={() => toggleVentaEspecial(!ventaEspecialAplicada)}
+              disabled={isBusy}
+            >
+              <Text style={styles.primaryButtonLabel}>
+                {isBusy
+                  ? 'Procesando...'
+                  : ventaEspecialAplicada
+                    ? 'Quitar precio especial'
+                    : 'Aplicar precio especial'}
+              </Text>
             </Pressable>
           </View>
 
@@ -770,18 +783,28 @@ const styles = StyleSheet.create({
   stageHeader: {
     marginBottom: 10,
   },
+  stageBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
   stageBadge: {
     alignSelf: 'flex-start',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    marginBottom: 8,
   },
   stageBadgeAuthorization: {
     backgroundColor: '#fff3d9',
   },
   stageBadgeBilling: {
     backgroundColor: '#def3ee',
+  },
+  stageBadgePostdated: {
+    backgroundColor: '#fff3d9',
+    borderWidth: 1,
+    borderColor: '#f3d08f',
   },
   stageBadgeLabel: {
     fontFamily: typography.bold,
@@ -793,10 +816,45 @@ const styles = StyleSheet.create({
   stageBadgeLabelBilling: {
     color: palette.primaryDark,
   },
+  stageBadgeLabelPostdated: {
+    color: '#9a6200',
+  },
+  postdatedContextCard: {
+    marginBottom: 8,
+    borderRadius: 10,
+    backgroundColor: '#fff9ef',
+    borderWidth: 1,
+    borderColor: '#f3d08f',
+    padding: 10,
+  },
+  postdatedContextTitle: {
+    color: '#9a6200',
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  postdatedContextValue: {
+    color: palette.text,
+    fontFamily: typography.bold,
+    fontSize: 14,
+  },
+  postdatedContextNote: {
+    marginTop: 6,
+    color: '#7a5b2b',
+    fontFamily: typography.regular,
+    fontSize: 12,
+    lineHeight: 18,
+  },
   stageHelper: {
     color: palette.text,
     fontFamily: typography.medium,
     fontSize: 13,
+  },
+  postdatedHint: {
+    marginTop: 6,
+    color: '#9a6200',
+    fontFamily: typography.medium,
+    fontSize: 12,
   },
   meta: {
     color: palette.mutedText,
@@ -982,6 +1040,13 @@ const styles = StyleSheet.create({
   destructiveButton: {
     marginTop: 10,
     backgroundColor: '#b42318',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  infoButton: {
+    marginTop: 10,
+    backgroundColor: '#0f7a8a',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
