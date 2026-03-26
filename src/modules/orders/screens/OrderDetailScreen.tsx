@@ -274,6 +274,7 @@ export function OrderDetailScreen({
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
           {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="primary" /> : null}
+          {order.origen_ml ? <StatusBadge label="DERIVADO ML" tone="default" /> : null}
           {order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
           {order.status !== 1 && order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
@@ -283,11 +284,13 @@ export function OrderDetailScreen({
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
         {order.postfechado ? <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text> : null}
         {order.es_mercado_libre ? <Text style={styles.meta}>Mercado Libre: Sí</Text> : null}
+        {order.origen_ml ? <Text style={styles.meta}>Pedido derivado desde ML: Sí</Text> : null}
         {order.es_mercado_libre ? (
           <Text style={styles.meta}>
             Inventario afectado en almacén: {order.ml_inventario_afectado ? 'Sí' : 'No'}
           </Text>
         ) : null}
+        {order.inventario_preafectado ? <Text style={styles.meta}>Inventario preafectado: Sí</Text> : null}
         {order.venta_especial ? <Text style={styles.meta}>Precio especial aplicado: Sí (precio promedio + 3%)</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
@@ -333,6 +336,18 @@ export function OrderDetailScreen({
             <Text style={styles.meta}>
               Pendiente por facturar: sí. Facturación no volverá a descontar inventario.
             </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {order.origen_ml ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Pedido derivado desde Mercado Libre</Text>
+          <Text style={styles.observaciones}>
+            Este pedido nació desde un ajuste final de Mercado Libre. El inventario ya estaba afectado previamente en el pedido origen y este flujo no volverá a descontarlo.
+          </Text>
+          {order.ml_origen_pedido_id ? (
+            <Text style={styles.meta}>Pedido origen ML: #{order.ml_origen_pedido_id}</Text>
           ) : null}
         </View>
       ) : null}

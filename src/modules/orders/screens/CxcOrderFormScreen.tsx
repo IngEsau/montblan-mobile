@@ -163,14 +163,20 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   );
   const isPostfechado = useMemo(() => Boolean(order?.postfechado), [order?.postfechado]);
   const isMercadoLibre = useMemo(() => Boolean(order?.es_mercado_libre), [order?.es_mercado_libre]);
+  const isMercadoLibreDerived = useMemo(() => Boolean(order?.origen_ml), [order?.origen_ml]);
   const mlInventarioAfectado = useMemo(
     () => Boolean(order?.ml_inventario_afectado),
     [order?.ml_inventario_afectado],
+  );
+  const inventarioPreafectado = useMemo(
+    () => Boolean(order?.inventario_preafectado),
+    [order?.inventario_preafectado],
   );
   const mlPendienteFacturacion = useMemo(
     () => Boolean(order?.ml_pendiente_facturacion),
     [order?.ml_pendiente_facturacion],
   );
+  const mlOrigenPedidoId = useMemo(() => order?.ml_origen_pedido_id ?? null, [order?.ml_origen_pedido_id]);
   const fechaEntregaVisible = useMemo(() => (order?.fecha_entrega || '').trim() || '-', [order?.fecha_entrega]);
   const noPedidoGuardado = useMemo(() => Boolean((order?.no_pedido || '').trim()), [order?.no_pedido]);
   const noPedidoVisible = useMemo(() => {
@@ -726,6 +732,11 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                 : 'Mercado Libre: al salir de almacén hacia facturación, el inventario se afecta para reflejar la salida física.'}
             </Text>
           ) : null}
+          {isMercadoLibreDerived ? (
+            <Text style={styles.mlHint}>
+              Pedido derivado desde Mercado Libre: el inventario ya estaba preafectado en el pedido origen y este flujo no volverá a descontarlo.
+            </Text>
+          ) : null}
           {isPostfechado ? (
             <Text style={styles.postdatedHint}>
               Pedido postfechado con entrega programada para {fechaEntregaVisible}.
@@ -790,10 +801,22 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <Text style={styles.noteValue}>Sí</Text>
           </View>
         ) : null}
+        {isMercadoLibreDerived ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Derivado desde ML</Text>
+            <Text style={styles.noteValue}>{mlOrigenPedidoId ? `Sí. Pedido origen #${mlOrigenPedidoId}` : 'Sí'}</Text>
+          </View>
+        ) : null}
         {isMercadoLibre ? (
           <View style={styles.noteRow}>
             <Text style={styles.noteLabel}>Inventario afectado en almacén</Text>
             <Text style={styles.noteValue}>{mlInventarioAfectado ? 'Sí' : 'No'}</Text>
+          </View>
+        ) : null}
+        {inventarioPreafectado ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Inventario preafectado</Text>
+            <Text style={styles.noteValue}>Sí. No se descuenta de nuevo en este flujo.</Text>
           </View>
         ) : null}
         {mlPendienteFacturacion ? (
