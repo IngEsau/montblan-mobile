@@ -117,12 +117,19 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const applyClienteSelection = useCallback(
     (cliente: Cliente, options?: { preserveManualFields?: boolean }) => {
       const preserveManualFields = options?.preserveManualFields === true;
+      const suggestedSeller = (cliente.asignado_a_nombre || cliente.asignado_a_username || '').trim();
 
       setSelectedCliente(cliente);
       setNoClienteInput(cliente.clave || '');
       setClienteRazonSocialManual(cliente.nombre_comercial || cliente.nombre || '');
       setClienteTelefonoManual(cliente.telefono || '');
-      setManualVendedor(cliente.asignado_a_nombre || cliente.asignado_a_username || '');
+      setManualVendedor((prev) => {
+        if (preserveManualFields || prev.trim()) {
+          return prev;
+        }
+
+        return suggestedSeller;
+      });
       setDireccion((cliente.calle || '').trim());
 
       // El catálogo de clientes actual no expone ubicación completa,
@@ -546,17 +553,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   };
 
   const vendedorResolvido = useMemo(() => {
-    if (isTemporaryClient) {
-      const vendedorTemporal = manualVendedor.trim();
-      if (vendedorTemporal) {
-        return vendedorTemporal;
-      }
-
-      if (isEditMode) {
-        return '';
-      }
-
-      return user?.username || 'movil';
+    const vendedorManual = manualVendedor.trim();
+    if (vendedorManual) {
+      return vendedorManual;
     }
 
     const assignedName = selectedCliente?.asignado_a_nombre?.trim();
@@ -574,7 +573,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     }
 
     return user?.username || 'movil';
-  }, [isEditMode, isTemporaryClient, manualVendedor, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
+  }, [isEditMode, manualVendedor, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
 
   const linesWithAvailability = useMemo(
     () =>
@@ -1026,46 +1025,23 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           style={styles.input}
         />
 
-        {isTemporaryClient ? (
-          <>
-            <Text style={styles.label}>Vendedor</Text>
-            <TextInput
-              value={manualVendedor}
-              onChangeText={setManualVendedor}
-              placeholder="Captura el vendedor"
-              style={styles.input}
-            />
-            <Text style={styles.helper}>
-              Para clientes temporales el vendedor puede capturarse manualmente. Si lo dejas vacío, se usará el usuario actual.
-            </Text>
-            <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
-              <Text style={styles.inlineToggleLabel}>
-                {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
-              </Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <View style={styles.inlineInfoCard}>
-              <View style={styles.inlineInfoBlock}>
-                <Text style={styles.infoTitle}>Vendedor</Text>
-                <Text style={styles.infoValue}>
-                  {vendedorResolvido || 'Se asignará desde el catálogo del cliente al guardar'}
-                </Text>
-              </View>
-              <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
-                <Text style={styles.inlineToggleLabel}>
-                  {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
-                </Text>
-              </Pressable>
-            </View>
-            <Text style={styles.helper}>
-              {selectedCliente?.asignado_a_id
-                ? 'El vendedor se toma del cliente asignado en catálogo.'
-                : 'Si el cliente no tiene vendedor asignado, se usará el usuario actual.'}
-            </Text>
-          </>
-        )}
+        <Text style={styles.label}>Vendedor</Text>
+        <TextInput
+          value={manualVendedor}
+          onChangeText={setManualVendedor}
+          placeholder="Captura el vendedor"
+          style={styles.input}
+        />
+        <Text style={styles.helper}>
+          {selectedCliente?.asignado_a_id
+            ? 'Campo libre. Si lo dejas vacío, se usará como sugerencia el vendedor del cliente o el usuario actual.'
+            : 'Campo libre. Si lo dejas vacío, se usará el usuario actual.'}
+        </Text>
+        <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
+          <Text style={styles.inlineToggleLabel}>
+            {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
+          </Text>
+        </Pressable>
 
         {showOptionalFields ? (
           <>
