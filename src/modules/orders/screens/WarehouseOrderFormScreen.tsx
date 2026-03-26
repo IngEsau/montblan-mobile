@@ -132,6 +132,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         const importeCalculado = Number((cantidadFacturable * line.precio).toFixed(2));
         const extraCantidad = Math.max(cantidadFacturable - line.cantidad, 0);
         const extraMonto = Math.max(importeCalculado - line.importeOriginal, 0);
+        const stockDespues =
+          line.inventarioDisponible !== null && Number.isFinite(surtidoNormalizado)
+            ? Number((line.inventarioDisponible - surtidoNormalizado).toFixed(4))
+            : null;
+        const inventarioExcedido = stockDespues !== null && stockDespues < -0.00001;
 
         return {
           ...line,
@@ -143,6 +148,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           importeCalculado,
           extraCantidad,
           extraMonto,
+          stockDespues,
+          inventarioExcedido,
         };
       }),
     [lines],
@@ -200,9 +207,6 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         return `Surtido y rollos no pueden ser negativos (${line.codigo}).`;
       }
 
-      if (line.inventarioDisponible !== null && line.surtido > line.inventarioDisponible) {
-        return `El surtido excede inventario disponible en ${line.codigo}.`;
-      }
     }
 
     return null;
@@ -390,6 +394,9 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           <Text style={styles.metaRow}>
             Cantidad solicitada: {line.cantidad} | Inventario: {line.inventarioDisponible ?? '-'}
           </Text>
+          <Text style={[styles.metaRow, line.inventarioExcedido ? styles.inventoryFeedbackDanger : styles.inventoryFeedbackOk]}>
+            Stock actual: {line.inventarioDisponible ?? '-'} | Surtido: {Number.isFinite(line.surtido) ? line.surtido.toFixed(2) : '-'} | Stock después: {line.stockDespues !== null ? line.stockDespues.toFixed(2) : '-'}
+          </Text>
           <Text style={styles.metaRow}>Precio: {formatMoney(line.precio)} | Importe actual: {formatMoney(line.importeCalculado)}</Text>
 
           <View style={styles.inputRow}>
@@ -424,6 +431,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           {line.extraCantidad > 0 ? (
             <Text style={styles.extraInfo}>
               Extra surtido: +{line.extraCantidad.toFixed(2)} | Incremento: +{formatMoney(line.extraMonto)}
+            </Text>
+          ) : null}
+          {line.inventarioExcedido ? (
+            <Text style={styles.inventoryFeedbackDanger}>
+              Feedback de inventario: el surtido proyecta un stock negativo. La captura puede guardarse, pero queda señalado para revisión operativa.
             </Text>
           ) : null}
         </View>
@@ -614,6 +626,17 @@ const styles = StyleSheet.create({
     color: '#a5621d',
     fontFamily: typography.medium,
     fontSize: 12,
+  },
+  inventoryFeedbackOk: {
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  inventoryFeedbackDanger: {
+    color: palette.danger,
+    fontFamily: typography.medium,
+    fontSize: 12,
+    marginTop: 6,
   },
   error: {
     marginTop: 10,
