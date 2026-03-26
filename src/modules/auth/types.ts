@@ -11,6 +11,7 @@ export type AuthUser = {
     can_sales: boolean;
     can_warehouse: boolean;
     can_cxc: boolean;
+    can_edit_ml_facturacion: boolean;
   };
 };
 
