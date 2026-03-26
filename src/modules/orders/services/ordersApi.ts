@@ -56,6 +56,18 @@ type TransitionPayload = {
   fecha_entrega?: string;
 };
 
+type ClienteByClaveResponse = {
+  ok: boolean;
+  item: {
+    id: number;
+    clave: string;
+    nombre: string | null;
+    nombre_comercial: string | null;
+    asignado_a_nombre: string | null;
+    asignado_a_username: string | null;
+  };
+};
+
 export const ordersApi = {
   list: (token: string, params: ListOrdersParams) =>
     apiRequest<PedidoListResponse>(`/pedidos?${buildOrdersQuery(params)}`, {
@@ -64,6 +76,11 @@ export const ordersApi = {
 
   detail: (token: string, orderId: number) =>
     apiRequest<PedidoDetailResponse>(`/pedidos/${orderId}`, {
+      token,
+    }),
+
+  clienteByClave: (token: string, clave: string) =>
+    apiRequest<ClienteByClaveResponse>(`/clientes/by-clave?clave=${encodeURIComponent(clave)}`, {
       token,
     }),
 

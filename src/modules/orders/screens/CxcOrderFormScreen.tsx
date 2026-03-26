@@ -452,6 +452,34 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     }
   };
 
+  const autofillSplitClientData = useCallback(async () => {
+    const clave = splitNoClienteInput.trim();
+    if (!token || !clave) {
+      return;
+    }
+
+    try {
+      const response = await ordersApi.clienteByClave(token, clave);
+      const cliente = response.item;
+      const razonSocial = (cliente.nombre_comercial || cliente.nombre || '').trim();
+      const vendedorSugerido = (cliente.asignado_a_nombre || cliente.asignado_a_username || '').trim();
+
+      if (cliente.clave) {
+        setSplitNoClienteInput(cliente.clave);
+      }
+      if (razonSocial) {
+        setSplitRazonSocialInput(razonSocial);
+      }
+      if (!splitVendedorInput.trim() && vendedorSugerido) {
+        setSplitVendedorInput(vendedorSugerido);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return;
+      }
+    }
+  }, [splitNoClienteInput, splitVendedorInput, token]);
+
   const saveMlSplit = async () => {
     if (!token || !order || isBusy) {
       return;
@@ -1037,6 +1065,12 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               <TextInput
                 value={splitNoClienteInput}
                 onChangeText={setSplitNoClienteInput}
+                onBlur={() => {
+                  void autofillSplitClientData();
+                }}
+                onSubmitEditing={() => {
+                  void autofillSplitClientData();
+                }}
                 style={styles.input}
                 placeholder="No. cliente del pedido derivado"
                 keyboardType="number-pad"
