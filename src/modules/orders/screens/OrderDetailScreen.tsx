@@ -273,6 +273,7 @@ export function OrderDetailScreen({
             tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
+          {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="primary" /> : null}
           {order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
           {order.status !== 1 && order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
@@ -281,6 +282,12 @@ export function OrderDetailScreen({
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
         {order.postfechado ? <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text> : null}
+        {order.es_mercado_libre ? <Text style={styles.meta}>Mercado Libre: Sí</Text> : null}
+        {order.es_mercado_libre ? (
+          <Text style={styles.meta}>
+            Inventario afectado en almacén: {order.ml_inventario_afectado ? 'Sí' : 'No'}
+          </Text>
+        ) : null}
         {order.venta_especial ? <Text style={styles.meta}>Precio especial aplicado: Sí (precio promedio + 3%)</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
@@ -311,6 +318,22 @@ export function OrderDetailScreen({
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Comentario de almacén</Text>
           <Text style={styles.observaciones}>{order.comentario_almacen}</Text>
+        </View>
+      ) : null}
+
+      {order.es_mercado_libre ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Mercado Libre</Text>
+          <Text style={styles.observaciones}>
+            {order.ml_inventario_afectado
+              ? 'El inventario de este pedido ya fue afectado desde almacén para reflejar la salida física del producto.'
+              : 'Este pedido está identificado como Mercado Libre. El inventario se afectará cuando salga de almacén hacia facturación.'}
+          </Text>
+          {order.ml_pendiente_facturacion ? (
+            <Text style={styles.meta}>
+              Pendiente por facturar: sí. Facturación no volverá a descontar inventario.
+            </Text>
+          ) : null}
         </View>
       ) : null}
 

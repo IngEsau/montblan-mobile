@@ -96,6 +96,15 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     [documentoCancelado, documentoGuardado, isFinishedStage],
   );
   const isPostfechado = useMemo(() => Boolean(order?.postfechado), [order?.postfechado]);
+  const isMercadoLibre = useMemo(() => Boolean(order?.es_mercado_libre), [order?.es_mercado_libre]);
+  const mlInventarioAfectado = useMemo(
+    () => Boolean(order?.ml_inventario_afectado),
+    [order?.ml_inventario_afectado],
+  );
+  const mlPendienteFacturacion = useMemo(
+    () => Boolean(order?.ml_pendiente_facturacion),
+    [order?.ml_pendiente_facturacion],
+  );
   const fechaEntregaVisible = useMemo(() => (order?.fecha_entrega || '').trim() || '-', [order?.fecha_entrega]);
   const noPedidoGuardado = useMemo(() => Boolean((order?.no_pedido || '').trim()), [order?.no_pedido]);
   const noPedidoVisible = useMemo(() => {
@@ -338,7 +347,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       }
     };
 
-    const confirmationMessage = `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`;
+    const confirmationMessage = isMercadoLibre && mlInventarioAfectado
+      ? `Se cancelará el documento ${currentDocument}.\n\nEl inventario se mantendrá afectado porque este pedido es Mercado Libre y la salida ya ocurrió en almacén. El flujo permanecerá en TERMINADO.`
+      : `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const accepted = window.confirm(confirmationMessage);
@@ -431,6 +442,11 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                 <Text style={[styles.stageBadgeLabel, styles.stageBadgeLabelPostdated]}>POSTFECHADO</Text>
               </View>
             ) : null}
+            {isMercadoLibre ? (
+              <View style={[styles.stageBadge, styles.stageBadgeMercadoLibre]}>
+                <Text style={[styles.stageBadgeLabel, styles.stageBadgeLabelMercadoLibre]}>MERCADO LIBRE</Text>
+              </View>
+            ) : null}
           </View>
           {isPostfechado ? (
             <View style={styles.postdatedContextCard}>
@@ -450,6 +466,13 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                   ? 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'
                   : 'Operación actual de CXC.'}
           </Text>
+          {isMercadoLibre ? (
+            <Text style={styles.mlHint}>
+              {mlInventarioAfectado
+                ? 'Mercado Libre: el inventario ya fue afectado en almacén y facturación no volverá a descontarlo.'
+                : 'Mercado Libre: al salir de almacén hacia facturación, el inventario se afecta para reflejar la salida física.'}
+            </Text>
+          ) : null}
           {isPostfechado ? (
             <Text style={styles.postdatedHint}>
               Pedido postfechado con entrega programada para {fechaEntregaVisible}.
@@ -506,6 +529,24 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <View style={styles.noteRow}>
             <Text style={styles.noteLabel}>Fecha de entrega</Text>
             <Text style={styles.noteValue}>{fechaEntregaVisible}</Text>
+          </View>
+        ) : null}
+        {isMercadoLibre ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Mercado Libre</Text>
+            <Text style={styles.noteValue}>Sí</Text>
+          </View>
+        ) : null}
+        {isMercadoLibre ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Inventario afectado en almacén</Text>
+            <Text style={styles.noteValue}>{mlInventarioAfectado ? 'Sí' : 'No'}</Text>
+          </View>
+        ) : null}
+        {mlPendienteFacturacion ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Pendiente por facturar</Text>
+            <Text style={styles.noteValue}>Sí. Facturación no volverá a descontar inventario.</Text>
           </View>
         ) : null}
         {cxcNotes.map((item) => (
@@ -674,7 +715,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Documento final terminado</Text>
             <Text style={styles.meta}>
-              El pedido ya cerró el flujo y el inventario ya fue afectado. La cancelación del documento no reabre el pedido.
+              {isMercadoLibre && mlInventarioAfectado
+                ? 'El pedido ya cerró el flujo. En Mercado Libre el inventario ya había sido afectado desde almacén y la cancelación documental no reabre el pedido.'
+                : 'El pedido ya cerró el flujo y el inventario ya fue afectado. La cancelación del documento no reabre el pedido.'}
             </Text>
             <View style={styles.summaryGrid}>
               <View style={styles.summaryCell}>
@@ -704,7 +747,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Cancelar documento final</Text>
               <Text style={styles.hint}>
-                Confirma el número exacto del documento y captura el motivo. El inventario se revertirá y el pedido permanecerá en TERMINADO.
+                {isMercadoLibre && mlInventarioAfectado
+                  ? 'Confirma el número exacto del documento y captura el motivo. En Mercado Libre el inventario se mantendrá afectado porque la salida ya ocurrió en almacén.'
+                  : 'Confirma el número exacto del documento y captura el motivo. El inventario se revertirá y el pedido permanecerá en TERMINADO.'}
               </Text>
               <Text style={styles.fieldLabel}>Confirmar {documentFieldLabel}</Text>
               <TextInput
@@ -806,6 +851,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f3d08f',
   },
+  stageBadgeMercadoLibre: {
+    backgroundColor: '#d8f3ee',
+    borderWidth: 1,
+    borderColor: '#8ad9ca',
+  },
   stageBadgeLabel: {
     fontFamily: typography.bold,
     fontSize: 11,
@@ -818,6 +868,9 @@ const styles = StyleSheet.create({
   },
   stageBadgeLabelPostdated: {
     color: '#9a6200',
+  },
+  stageBadgeLabelMercadoLibre: {
+    color: palette.primaryDark,
   },
   postdatedContextCard: {
     marginBottom: 8,
@@ -849,6 +902,12 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.medium,
     fontSize: 13,
+  },
+  mlHint: {
+    marginTop: 6,
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
+    fontSize: 12,
   },
   postdatedHint: {
     marginTop: 6,

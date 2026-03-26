@@ -179,6 +179,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
     () => isAlmacenStatusComplete(order?.almacen_status),
     [order?.almacen_status],
   );
+  const isMercadoLibre = useMemo(() => Boolean(order?.es_mercado_libre), [order?.es_mercado_libre]);
 
   const updateLineInput = (lineId: number, field: 'surtidoInput' | 'rolloInput', value: string) => {
     setLines((prev) =>
@@ -308,8 +309,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
 
     setIsSaving(true);
     try {
-      await ordersApi.transition(token, order.id, 'facturacion');
-      Alert.alert('Flujo actualizado', 'Pedido enviado a FACTURACIÓN.');
+      const response = await ordersApi.transition(token, order.id, 'facturacion');
+      const successMessage = response.inventory_affected
+        ? `${response.message || 'Pedido enviado a FACTURACIÓN.'}\n\nInventario afectado: ${response.inventory_affected.productos_afectados} producto(s), ${response.inventory_affected.cantidad_total.toFixed(2)} unidades totales.`
+        : (response.message || 'Pedido enviado a FACTURACIÓN.');
+      Alert.alert('Flujo actualizado', successMessage);
       onDone(order.id);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible enviar a FACTURACIÓN.';
@@ -341,6 +345,17 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       <Text style={styles.subtitle}>Pedido #{order.no_pedido || order.id}</Text>
       <Text style={styles.subtitle}>Cliente: {order.cliente_razon_social || '-'}</Text>
       <Text style={styles.subtitle}>Total pedido: {formatMoney(order.total)}</Text>
+      {isMercadoLibre ? (
+        <View style={styles.mlCard}>
+          <Text style={styles.mlTitle}>Mercado Libre</Text>
+          <Text style={styles.helperInfo}>
+            Este pedido se comporta distinto al flujo normal: al enviarlo a facturación el inventario se descontará desde almacén para reflejar la salida física.
+          </Text>
+          {order.ml_inventario_afectado ? (
+            <Text style={styles.mlInfo}>Inventario ya afectado en almacén. No se volverá a descontar en facturación.</Text>
+          ) : null}
+        </View>
+      ) : null}
       {order.postfechado ? (
         <>
           <Text style={styles.subtitle}>
@@ -512,6 +527,27 @@ const styles = StyleSheet.create({
     fontFamily: typography.semiBold,
     fontSize: 14,
     marginBottom: 4,
+  },
+  mlCard: {
+    marginTop: 10,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#cfe7f6',
+    borderRadius: 12,
+    backgroundColor: '#f3f9fd',
+    padding: 12,
+  },
+  mlTitle: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  mlInfo: {
+    marginTop: 6,
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
+    fontSize: 12,
   },
   commentCard: {
     marginTop: 10,

@@ -16,6 +16,9 @@ export type PedidoListItem = {
   almacen_status: string | null;
   documento_cancelado?: boolean;
   postfechado?: boolean;
+  es_mercado_libre?: boolean;
+  ml_inventario_afectado?: boolean;
+  ml_pendiente_facturacion?: boolean;
   venta_especial?: boolean;
   subtotal: number;
   iva: number;
@@ -75,6 +78,10 @@ export type Pedido = PedidoListItem & {
   fecha_entrega: string | null;
   postfechado?: boolean;
   comentario_almacen?: string | null;
+  es_mercado_libre?: boolean;
+  ml_inventario_afectado?: boolean;
+  ml_inventario_afectado_at?: number | null;
+  ml_pendiente_facturacion?: boolean;
   vendedor: string | null;
   cliente_telefono: string | null;
   cliente_correo: string | null;
