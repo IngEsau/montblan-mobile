@@ -52,7 +52,7 @@ export function EvidenceSection({
               : 'Puedes cargar JPG, PNG o PDF.'}
           </Text>
           <Text style={styles.helperText}>
-            La evidencia solo puede ser vista por el vendedor responsable y CXC.
+            La evidencia solo puede ser vista por el vendedor que capturó el pedido y CXC.
           </Text>
           {onAddFiles ? (
             <Pressable style={styles.secondaryButton} onPress={onAddFiles} disabled={uploading}>

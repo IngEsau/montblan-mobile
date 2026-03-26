@@ -341,7 +341,7 @@ export function OrderDetailScreen({
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Evidencia</Text>
           <Text style={styles.meta}>
-            Visible solo para el vendedor responsable y CXC.
+            Visible solo para el vendedor que capturó el pedido y CXC.
           </Text>
           {(order.evidence_max_file_size_label || order.evidence_max_file_size_bytes || order.max_upload_bytes) ? (
             <Text style={styles.meta}>

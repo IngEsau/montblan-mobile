@@ -1206,7 +1206,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <View>
               <Text style={styles.sectionTitle}>EVIDENCIA</Text>
               <Text style={styles.sectionMeta}>
-                Solo el vendedor responsable y CXC pueden verla.
+                Solo el vendedor que capturó el pedido y CXC pueden verla.
               </Text>
             </View>
             {canManageEvidence ? (
