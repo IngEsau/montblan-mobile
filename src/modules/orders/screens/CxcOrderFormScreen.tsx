@@ -120,9 +120,17 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       Boolean(
         isBillingStage &&
           order?.es_mercado_libre &&
-          ((order?.can_edit_ml_facturacion ?? false) || (user?.permissions?.can_edit_ml_facturacion ?? false)),
+          ((order?.can_edit_ml_facturacion ?? false) ||
+            (user?.permissions?.can_edit_ml_facturacion ?? false) ||
+            (user?.permissions?.can_cxc ?? false)),
       ),
-    [isBillingStage, order?.can_edit_ml_facturacion, order?.es_mercado_libre, user?.permissions?.can_edit_ml_facturacion],
+    [
+      isBillingStage,
+      order?.can_edit_ml_facturacion,
+      order?.es_mercado_libre,
+      user?.permissions?.can_cxc,
+      user?.permissions?.can_edit_ml_facturacion,
+    ],
   );
   const documentFieldLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. remisión' : 'No. factura'),
