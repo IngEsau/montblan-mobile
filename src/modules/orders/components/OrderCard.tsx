@@ -28,6 +28,7 @@ export function OrderCard({ order, onPress }: OrderCardProps) {
             tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
+          {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="primary" /> : null}
           {order.status !== 1 && Boolean(order.documento_cancelado) ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
         </View>
       </View>

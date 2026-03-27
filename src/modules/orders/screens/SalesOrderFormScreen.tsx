@@ -21,7 +21,7 @@ import { catalogApi } from '../../catalog/services/catalogApi';
 import { Cliente, CodigoPostalColonia, Producto } from '../../catalog/types';
 import { downloadEvidence, previewEvidence } from '../utils/evidence';
 import { ordersApi } from '../services/ordersApi';
-import { PedidoAdjuntoUploadAsset, PedidoEvidenciaItem } from '../types';
+import { PedidoAdjuntoUploadAsset, PedidoCreatePayload, PedidoEvidenciaItem } from '../types';
 
 type DraftLine = {
   id: string;
@@ -130,10 +130,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
         return suggestedSeller;
       });
-      setDireccion((cliente.calle || '').trim());
-
-      // El catálogo de clientes actual no expone ubicación completa,
-      // así que limpiamos residuos de C.P./estado/municipio/colonia al cambiar de cliente.
+      // La ubicación ya no se captura para clientes de catálogo.
       setCodigoPostal('');
       setCodigoPostalRows([]);
       setEstadoId(null);
@@ -313,6 +310,15 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     if (isTemporaryClientCode(normalized)) {
       if (selectedCliente) {
         setSelectedCliente(null);
+        setCodigoPostal('');
+        setCodigoPostalRows([]);
+        setEstadoId(null);
+        setMunicipioId(null);
+        setColoniaId(null);
+        setDireccion('');
+        setNumInt('');
+        setNumExt('');
+        setReferenciaDireccion('');
       }
       return;
     }
@@ -750,7 +756,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       return 'Debes capturar la fecha de entrega cuando el pedido es postfechado.';
     }
 
-    if (!direccion.trim()) {
+    if (isTemporaryClient && !direccion.trim()) {
       return 'Debes capturar la dirección del pedido.';
     }
 
@@ -799,7 +805,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         ? clienteTelefonoManual.trim()
         : selectedCliente?.telefono || '';
 
-      const payload = {
+      const payload: PedidoCreatePayload = {
         pedido: {
           no_cliente: noClientePayload,
           cliente_razon_social: razonSocialPayload,
@@ -816,16 +822,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           instrucciones_almacen: instruccionesAlmacen.trim() || undefined,
           vendedor: vendedorResolvido || undefined,
         },
-        direccion: {
-          direccion: direccion.trim(),
-          num_ext: numExt.trim() || undefined,
-          num_int: numInt.trim() || undefined,
-          referencia: referenciaDireccion.trim() || undefined,
-          codigo_postal: codigoPostal.trim() || undefined,
-          estado_id: estadoId || undefined,
-          municipio_id: municipioId || undefined,
-          codigo_postal_id: coloniaId || undefined,
-        },
         detalle: lines.map((line) => {
           const qty = Number(line.cantidad);
           const importe = Number((qty * line.precio).toFixed(2));
@@ -839,6 +835,19 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           };
         }),
       };
+
+      if (isTemporaryClient) {
+        payload.direccion = {
+          direccion: direccion.trim(),
+          num_ext: numExt.trim() || undefined,
+          num_int: numInt.trim() || undefined,
+          referencia: referenciaDireccion.trim() || undefined,
+          codigo_postal: codigoPostal.trim() || undefined,
+          estado_id: estadoId || undefined,
+          municipio_id: municipioId || undefined,
+          codigo_postal_id: coloniaId || undefined,
+        };
+      }
 
       const response =
         isEditMode && orderId
@@ -1079,91 +1088,93 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         ) : null}
       </View>
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Ubicación</Text>
-        <View style={styles.lineRow}>
-          <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>C.P.</Text>
-            <TextInput
-              value={codigoPostal}
-              onChangeText={handleCodigoPostalChange}
-              onBlur={handleCodigoPostalBlur}
-              placeholder="Ej. 77500"
-              style={styles.input}
-              keyboardType="number-pad"
-            />
+      {isTemporaryClient ? (
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Ubicación</Text>
+          <View style={styles.lineRow}>
+            <View style={styles.lineInputWrap}>
+              <Text style={styles.label}>C.P.</Text>
+              <TextInput
+                value={codigoPostal}
+                onChangeText={handleCodigoPostalChange}
+                onBlur={handleCodigoPostalBlur}
+                placeholder="Ej. 77500"
+                style={styles.input}
+                keyboardType="number-pad"
+              />
+            </View>
+            <View style={styles.lineInputWrap}>
+              <Text style={styles.label}>Colonia</Text>
+              <Pressable
+                style={styles.selector}
+                onPress={() => setColoniaModalOpen(true)}
+                disabled={coloniasDisponibles.length === 0}
+              >
+                <Text style={styles.selectorValue}>
+                  {coloniaSeleccionada?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar colonia' : 'Sin datos')}
+                </Text>
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>Colonia</Text>
-            <Pressable
-              style={styles.selector}
-              onPress={() => setColoniaModalOpen(true)}
-              disabled={coloniasDisponibles.length === 0}
-            >
-              <Text style={styles.selectorValue}>
-                {coloniaSeleccionada?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar colonia' : 'Sin datos')}
-              </Text>
-            </Pressable>
+          {isLookingUpPostalCode ? <Text style={styles.helper}>Buscando datos de C.P...</Text> : null}
+
+          <View style={styles.lineRow}>
+            <View style={styles.lineInputWrap}>
+              <Text style={styles.label}>Estado</Text>
+              <Pressable
+                style={styles.selector}
+                onPress={() => setEstadoModalOpen(true)}
+                disabled={estadosDisponibles.length === 0}
+              >
+                <Text style={styles.selectorValue}>
+                  {estadoSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar estado' : 'Sin datos')}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.lineInputWrap}>
+              <Text style={styles.label}>Deleg./Mpio.</Text>
+              <Pressable
+                style={styles.selector}
+                onPress={() => setMunicipioModalOpen(true)}
+                disabled={municipiosDisponibles.length === 0}
+              >
+                <Text style={styles.selectorValue}>
+                  {municipioSeleccionado?.nombre ||
+                    (codigoPostalRows.length > 0 ? 'Seleccionar municipio' : 'Sin datos')}
+                </Text>
+              </Pressable>
+            </View>
           </View>
+
+          <Text style={styles.label}>Dirección</Text>
+          <TextInput
+            value={direccion}
+            onChangeText={setDireccion}
+            placeholder="Calle y número"
+            style={styles.input}
+          />
+
+          <View style={styles.lineRow}>
+            <View style={styles.lineInputWrap}>
+              <Text style={styles.label}>No int</Text>
+              <TextInput value={numInt} onChangeText={setNumInt} placeholder="Ej. 12" style={styles.input} />
+            </View>
+            <View style={styles.lineInputWrap}>
+              <Text style={styles.label}>No ext</Text>
+              <TextInput value={numExt} onChangeText={setNumExt} placeholder="Ej. A" style={styles.input} />
+            </View>
+          </View>
+
+          <Text style={styles.label}>Referencia dirección</Text>
+          <TextInput
+            value={referenciaDireccion}
+            onChangeText={setReferenciaDireccion}
+            placeholder="Entre calles, puntos de referencia, etc."
+            style={[styles.input, styles.textareaCompact]}
+            multiline
+          />
         </View>
-        {isLookingUpPostalCode ? <Text style={styles.helper}>Buscando datos de C.P...</Text> : null}
-
-        <View style={styles.lineRow}>
-          <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>Estado</Text>
-            <Pressable
-              style={styles.selector}
-              onPress={() => setEstadoModalOpen(true)}
-              disabled={estadosDisponibles.length === 0}
-            >
-              <Text style={styles.selectorValue}>
-                {estadoSeleccionado?.nombre || (codigoPostalRows.length > 0 ? 'Seleccionar estado' : 'Sin datos')}
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>Deleg./Mpio.</Text>
-            <Pressable
-              style={styles.selector}
-              onPress={() => setMunicipioModalOpen(true)}
-              disabled={municipiosDisponibles.length === 0}
-            >
-              <Text style={styles.selectorValue}>
-                {municipioSeleccionado?.nombre ||
-                  (codigoPostalRows.length > 0 ? 'Seleccionar municipio' : 'Sin datos')}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <Text style={styles.label}>Dirección</Text>
-        <TextInput
-          value={direccion}
-          onChangeText={setDireccion}
-          placeholder="Calle y número"
-          style={styles.input}
-        />
-
-        <View style={styles.lineRow}>
-          <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>No int</Text>
-            <TextInput value={numInt} onChangeText={setNumInt} placeholder="Ej. 12" style={styles.input} />
-          </View>
-          <View style={styles.lineInputWrap}>
-            <Text style={styles.label}>No ext</Text>
-            <TextInput value={numExt} onChangeText={setNumExt} placeholder="Ej. A" style={styles.input} />
-          </View>
-        </View>
-
-        <Text style={styles.label}>Referencia dirección</Text>
-        <TextInput
-          value={referenciaDireccion}
-          onChangeText={setReferenciaDireccion}
-          placeholder="Entre calles, puntos de referencia, etc."
-          style={[styles.input, styles.textareaCompact]}
-          multiline
-        />
-      </View>
+      ) : null}
 
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Indicaciones</Text>
@@ -1206,7 +1217,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <View>
               <Text style={styles.sectionTitle}>EVIDENCIA</Text>
               <Text style={styles.sectionMeta}>
-                Solo el vendedor responsable y CXC pueden verla.
+                Solo el vendedor que capturó el pedido y CXC pueden verla.
               </Text>
             </View>
             {canManageEvidence ? (

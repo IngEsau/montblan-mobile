@@ -16,6 +16,12 @@ export type PedidoListItem = {
   almacen_status: string | null;
   documento_cancelado?: boolean;
   postfechado?: boolean;
+  es_mercado_libre?: boolean;
+  origen_ml?: boolean;
+  ml_inventario_afectado?: boolean;
+  inventario_preafectado?: boolean;
+  ml_pendiente_facturacion?: boolean;
+  can_edit_ml_facturacion?: boolean;
   venta_especial?: boolean;
   subtotal: number;
   iva: number;
@@ -75,6 +81,14 @@ export type Pedido = PedidoListItem & {
   fecha_entrega: string | null;
   postfechado?: boolean;
   comentario_almacen?: string | null;
+  es_mercado_libre?: boolean;
+  origen_ml?: boolean;
+  ml_origen_pedido_id?: number | null;
+  ml_inventario_afectado?: boolean;
+  inventario_preafectado?: boolean;
+  ml_inventario_afectado_at?: number | null;
+  ml_pendiente_facturacion?: boolean;
+  can_edit_ml_facturacion?: boolean;
   vendedor: string | null;
   cliente_telefono: string | null;
   cliente_correo: string | null;
@@ -263,6 +277,29 @@ export type PedidoCxcUpdatePayload = {
   no_pedido?: string;
   no_factura?: string;
   venta_especial?: number;
+  split_ml?: PedidoCxcSplitMlPayload;
+  detalle?: Array<{
+    id: number;
+    cantidad: number;
+    surtido?: number | null;
+    rollo?: number | null;
+  }>;
+};
+
+export type PedidoCxcSplitMlClienteDestino = {
+  no_cliente: string;
+  cliente_razon_social: string;
+  vendedor?: string;
+};
+
+export type PedidoCxcSplitMlLineaInput = {
+  id: number;
+  cantidad: number;
+};
+
+export type PedidoCxcSplitMlPayload = {
+  cliente_destino: PedidoCxcSplitMlClienteDestino;
+  lineas: PedidoCxcSplitMlLineaInput[];
 };
 
 export type PedidoCxcUpdateResponse = {

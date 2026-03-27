@@ -17,13 +17,30 @@ import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { EvidenceSection } from '../components/EvidenceSection';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido, PedidoEvidenciaItem } from '../types';
+import { Pedido, PedidoDetalleLinea, PedidoEvidenciaItem } from '../types';
 import { downloadEvidence, previewEvidence } from '../utils/evidence';
 import { resolveOrderStageLabel } from '../utils/status';
 
 type CxcOrderFormScreenProps = {
   orderId: number;
   onDone: (orderId: number) => void;
+};
+
+type MlAdjustmentLineDraft = {
+  id: number;
+  codigo: string;
+  descripcion: string;
+  cantidadInput: string;
+  surtidoInput: string;
+  rolloInput: string;
+};
+
+type MlSplitLineDraft = {
+  id: number;
+  codigo: string;
+  descripcion: string;
+  cantidadOriginal: number;
+  cantidadDerivarInput: string;
 };
 
 function formatHistorialDate(value: string | null | undefined) {
@@ -43,11 +60,51 @@ function formatHistorialDate(value: string | null | undefined) {
   return plainValue;
 }
 
+function buildMlAdjustmentLine(line: PedidoDetalleLinea): MlAdjustmentLineDraft {
+  return {
+    id: line.id,
+    codigo: line.codigo || '-',
+    descripcion: line.descripcion || 'Sin descripción',
+    cantidadInput: String(line.cantidad ?? 0),
+    surtidoInput: String(line.surtido ?? 0),
+    rolloInput: String(line.rollo ?? 0),
+  };
+}
+
+function buildMlSplitLine(line: PedidoDetalleLinea): MlSplitLineDraft {
+  return {
+    id: line.id,
+    codigo: line.codigo || '-',
+    descripcion: line.descripcion || 'Sin descripción',
+    cantidadOriginal: Number(line.cantidad ?? 0),
+    cantidadDerivarInput: '',
+  };
+}
+
+function normalizeIntegerInput(value: string) {
+  return value.replace(/[^\d]/g, '');
+}
+
+function normalizeDecimalInput(value: string) {
+  const normalized = value.replace(/,/g, '.').replace(/[^\d.]/g, '');
+  const parts = normalized.split('.');
+  if (parts.length <= 1) {
+    return normalized;
+  }
+
+  return `${parts[0]}.${parts.slice(1).join('')}`;
+}
+
 export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
+  const [mlAdjustmentLines, setMlAdjustmentLines] = useState<MlAdjustmentLineDraft[]>([]);
+  const [mlSplitLines, setMlSplitLines] = useState<MlSplitLineDraft[]>([]);
   const [noPedidoInput, setNoPedidoInput] = useState('');
   const [noFacturaInput, setNoFacturaInput] = useState('');
+  const [splitNoClienteInput, setSplitNoClienteInput] = useState('');
+  const [splitRazonSocialInput, setSplitRazonSocialInput] = useState('');
+  const [splitVendedorInput, setSplitVendedorInput] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmInput, setCancelConfirmInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -58,6 +115,15 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const isAuthorizationStage = useMemo(() => (order?.status ?? 0) === 20, [order?.status]);
   const isBillingStage = useMemo(() => (order?.status ?? 0) === 45, [order?.status]);
   const isFinishedStage = useMemo(() => (order?.status ?? 0) === 50, [order?.status]);
+  const canEditMlFacturacion = useMemo(
+    () =>
+      Boolean(
+        isBillingStage &&
+          order?.es_mercado_libre &&
+          ((order?.can_edit_ml_facturacion ?? false) || (user?.permissions?.can_edit_ml_facturacion ?? false)),
+      ),
+    [isBillingStage, order?.can_edit_ml_facturacion, order?.es_mercado_libre, user?.permissions?.can_edit_ml_facturacion],
+  );
   const documentFieldLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'No. remisión' : 'No. factura'),
     [order?.tipo_fac_rem],
@@ -96,6 +162,21 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     [documentoCancelado, documentoGuardado, isFinishedStage],
   );
   const isPostfechado = useMemo(() => Boolean(order?.postfechado), [order?.postfechado]);
+  const isMercadoLibre = useMemo(() => Boolean(order?.es_mercado_libre), [order?.es_mercado_libre]);
+  const isMercadoLibreDerived = useMemo(() => Boolean(order?.origen_ml), [order?.origen_ml]);
+  const mlInventarioAfectado = useMemo(
+    () => Boolean(order?.ml_inventario_afectado),
+    [order?.ml_inventario_afectado],
+  );
+  const inventarioPreafectado = useMemo(
+    () => Boolean(order?.inventario_preafectado),
+    [order?.inventario_preafectado],
+  );
+  const mlPendienteFacturacion = useMemo(
+    () => Boolean(order?.ml_pendiente_facturacion),
+    [order?.ml_pendiente_facturacion],
+  );
+  const mlOrigenPedidoId = useMemo(() => order?.ml_origen_pedido_id ?? null, [order?.ml_origen_pedido_id]);
   const fechaEntregaVisible = useMemo(() => (order?.fecha_entrega || '').trim() || '-', [order?.fecha_entrega]);
   const noPedidoGuardado = useMemo(() => Boolean((order?.no_pedido || '').trim()), [order?.no_pedido]);
   const noPedidoVisible = useMemo(() => {
@@ -166,8 +247,13 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       const detailResponse = await ordersApi.detail(token, orderId);
       const item = detailResponse.item;
       setOrder(item);
+      setMlAdjustmentLines(item.detalle.map(buildMlAdjustmentLine));
+      setMlSplitLines(item.detalle.map(buildMlSplitLine));
       setNoPedidoInput(item.no_pedido || '');
       setNoFacturaInput(item.no_factura || '');
+      setSplitNoClienteInput('');
+      setSplitRazonSocialInput('');
+      setSplitVendedorInput('');
       setCancelConfirmInput('');
       setCancelReason('');
 
@@ -179,6 +265,42 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       setIsLoading(false);
     }
   }, [orderId, token]);
+
+  const updateMlAdjustmentLine = useCallback(
+    (lineId: number, field: keyof Pick<MlAdjustmentLineDraft, 'cantidadInput' | 'surtidoInput' | 'rolloInput'>, value: string) => {
+      setMlAdjustmentLines((prev) =>
+        prev.map((line) =>
+          line.id === lineId
+            ? {
+                ...line,
+                [field]:
+                  field === 'cantidadInput'
+                    ? normalizeIntegerInput(value)
+                    : normalizeDecimalInput(value),
+              }
+            : line,
+        ),
+      );
+    },
+    [],
+  );
+
+  const updateMlSplitLine = useCallback((lineId: number, value: string) => {
+    setMlSplitLines((prev) =>
+      prev.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              cantidadDerivarInput: normalizeIntegerInput(value),
+            }
+          : line,
+      ),
+    );
+  }, []);
+
+  const removeMlAdjustmentLine = useCallback((lineId: number) => {
+    setMlAdjustmentLines((prev) => prev.filter((line) => line.id !== lineId));
+  }, []);
 
   useEffect(() => {
     fetchCxcData();
@@ -262,6 +384,180 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     }
   };
 
+  const saveMlAdjustments = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    if (!canEditMlFacturacion) {
+      setErrorMessage('No tienes permiso para ajustar partidas de Mercado Libre en facturación.');
+      return;
+    }
+
+    if (mlAdjustmentLines.length === 0) {
+      setErrorMessage('Debes conservar al menos una partida para guardar el ajuste.');
+      return;
+    }
+
+    const detail: Array<{
+      id: number;
+      cantidad: number;
+      surtido: number;
+      rollo: number;
+    }> = [];
+    for (const line of mlAdjustmentLines) {
+      const cantidad = Number.parseInt(line.cantidadInput, 10);
+      const surtido = line.surtidoInput.trim() === '' ? NaN : Number(line.surtidoInput);
+      const rollo = line.rolloInput.trim() === '' ? NaN : Number(line.rolloInput);
+
+      if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        setErrorMessage(`La cantidad debe ser un entero mayor a 0 en la línea ${line.codigo}.`);
+        return;
+      }
+
+      if (!Number.isFinite(surtido) || surtido < 0) {
+        setErrorMessage(`El surtido debe ser un número mayor o igual a 0 en la línea ${line.codigo}.`);
+        return;
+      }
+
+      if (!Number.isFinite(rollo) || rollo < 0) {
+        setErrorMessage(`El rollo debe ser un número mayor o igual a 0 en la línea ${line.codigo}.`);
+        return;
+      }
+
+      detail.push({
+        id: line.id,
+        cantidad,
+        surtido,
+        rollo,
+      });
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        detalle: detail,
+      });
+      Alert.alert(
+        'Ajuste guardado',
+        `${response.message}\n\nEste ajuste solo modifica el pedido ML pendiente en facturación y no vuelve a descontar inventario.`,
+      );
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible guardar el ajuste de partidas.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const autofillSplitClientData = useCallback(async () => {
+    const clave = splitNoClienteInput.trim();
+    if (!token || !clave) {
+      return;
+    }
+
+    try {
+      const response = await ordersApi.clienteByClave(token, clave);
+      const cliente = response.item;
+      const razonSocial = (cliente.nombre_comercial || cliente.nombre || '').trim();
+      const vendedorSugerido = (cliente.asignado_a_nombre || cliente.asignado_a_username || '').trim();
+
+      if (cliente.clave) {
+        setSplitNoClienteInput(cliente.clave);
+      }
+      if (razonSocial) {
+        setSplitRazonSocialInput(razonSocial);
+      }
+      if (!splitVendedorInput.trim() && vendedorSugerido) {
+        setSplitVendedorInput(vendedorSugerido);
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return;
+      }
+    }
+  }, [splitNoClienteInput, splitVendedorInput, token]);
+
+  const saveMlSplit = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    if (!canEditMlFacturacion) {
+      setErrorMessage('No tienes permiso para derivar pedidos de Mercado Libre en facturación.');
+      return;
+    }
+
+    const noClienteDestino = splitNoClienteInput.trim();
+    const razonSocialDestino = splitRazonSocialInput.trim();
+    const vendedorDestino = splitVendedorInput.trim();
+
+    if (!noClienteDestino) {
+      setErrorMessage('Debes capturar el número de cliente destino.');
+      return;
+    }
+
+    if (!razonSocialDestino) {
+      setErrorMessage('Debes capturar la razón social del cliente destino.');
+      return;
+    }
+
+    const lineas: Array<{ id: number; cantidad: number }> = [];
+    for (const line of mlSplitLines) {
+      const cantidad = Number.parseInt(line.cantidadDerivarInput, 10);
+      if (!line.cantidadDerivarInput.trim()) {
+        continue;
+      }
+
+      if (!Number.isInteger(cantidad) || cantidad <= 0) {
+        setErrorMessage(`La cantidad a derivar debe ser un entero mayor a 0 en la línea ${line.codigo}.`);
+        return;
+      }
+
+      if (cantidad > line.cantidadOriginal) {
+        setErrorMessage(`La cantidad a derivar no puede ser mayor que la cantidad original en la línea ${line.codigo}.`);
+        return;
+      }
+
+      lineas.push({
+        id: line.id,
+        cantidad,
+      });
+    }
+
+    if (lineas.length === 0) {
+      setErrorMessage('Debes capturar al menos una cantidad a derivar para crear el pedido normal.');
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.updateCxc(token, order.id, {
+        split_ml: {
+          cliente_destino: {
+            no_cliente: noClienteDestino,
+            cliente_razon_social: razonSocialDestino,
+            vendedor: vendedorDestino || undefined,
+          },
+          lineas,
+        },
+      });
+      Alert.alert(
+        'Pedido derivado creado',
+        `${response.message}\n\nLa derivación generó un pedido normal y no volverá a descontar inventario.`,
+      );
+      await fetchCxcData();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible derivar el pedido normal desde Mercado Libre.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const continueFlow = async () => {
     if (!token || !order || isBusy) {
       return;
@@ -338,7 +634,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       }
     };
 
-    const confirmationMessage = `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`;
+    const confirmationMessage = isMercadoLibre && mlInventarioAfectado
+      ? `Se cancelará el documento ${currentDocument}.\n\nEl inventario se mantendrá afectado porque este pedido es Mercado Libre y la salida ya ocurrió en almacén. El flujo permanecerá en TERMINADO.`
+      : `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`;
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const accepted = window.confirm(confirmationMessage);
@@ -431,6 +729,11 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                 <Text style={[styles.stageBadgeLabel, styles.stageBadgeLabelPostdated]}>POSTFECHADO</Text>
               </View>
             ) : null}
+            {isMercadoLibre ? (
+              <View style={[styles.stageBadge, styles.stageBadgeMercadoLibre]}>
+                <Text style={[styles.stageBadgeLabel, styles.stageBadgeLabelMercadoLibre]}>MERCADO LIBRE</Text>
+              </View>
+            ) : null}
           </View>
           {isPostfechado ? (
             <View style={styles.postdatedContextCard}>
@@ -450,6 +753,18 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                   ? 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'
                   : 'Operación actual de CXC.'}
           </Text>
+          {isMercadoLibre ? (
+            <Text style={styles.mlHint}>
+              {mlInventarioAfectado
+                ? 'Mercado Libre: el inventario ya fue afectado en almacén y facturación no volverá a descontarlo.'
+                : 'Mercado Libre: al salir de almacén hacia facturación, el inventario se afecta para reflejar la salida física.'}
+            </Text>
+          ) : null}
+          {isMercadoLibreDerived ? (
+            <Text style={styles.mlHint}>
+              Pedido derivado desde Mercado Libre: el inventario ya estaba preafectado en el pedido origen y este flujo no volverá a descontarlo.
+            </Text>
+          ) : null}
           {isPostfechado ? (
             <Text style={styles.postdatedHint}>
               Pedido postfechado con entrega programada para {fechaEntregaVisible}.
@@ -506,6 +821,36 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <View style={styles.noteRow}>
             <Text style={styles.noteLabel}>Fecha de entrega</Text>
             <Text style={styles.noteValue}>{fechaEntregaVisible}</Text>
+          </View>
+        ) : null}
+        {isMercadoLibre ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Mercado Libre</Text>
+            <Text style={styles.noteValue}>Sí</Text>
+          </View>
+        ) : null}
+        {isMercadoLibreDerived ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Derivado desde ML</Text>
+            <Text style={styles.noteValue}>{mlOrigenPedidoId ? `Sí. Pedido origen #${mlOrigenPedidoId}` : 'Sí'}</Text>
+          </View>
+        ) : null}
+        {isMercadoLibre ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Inventario afectado en almacén</Text>
+            <Text style={styles.noteValue}>{mlInventarioAfectado ? 'Sí' : 'No'}</Text>
+          </View>
+        ) : null}
+        {inventarioPreafectado ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Inventario preafectado</Text>
+            <Text style={styles.noteValue}>Sí. No se descuenta de nuevo en este flujo.</Text>
+          </View>
+        ) : null}
+        {mlPendienteFacturacion ? (
+          <View style={styles.noteRow}>
+            <Text style={styles.noteLabel}>Pendiente por facturar</Text>
+            <Text style={styles.noteValue}>Sí. Facturación no volverá a descontar inventario.</Text>
           </View>
         ) : null}
         {cxcNotes.map((item) => (
@@ -575,6 +920,84 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             ))}
           </View>
 
+          {canEditMlFacturacion ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Ajuste de partidas Mercado Libre</Text>
+              <Text style={styles.hint}>
+                Ajusta únicamente las líneas activas del pedido ML pendiente en facturación. Este guardado no vuelve a descontar inventario; solo actualiza el detalle que se enviará al backend.
+              </Text>
+              <Text style={styles.mlAdjustmentWarning}>
+                Si eliminas una línea, ya no se enviará en el guardado. El backend toma el payload completo de líneas activas.
+              </Text>
+
+              {mlAdjustmentLines.length === 0 ? (
+                <Text style={styles.warningText}>
+                  Debes conservar al menos una partida para poder guardar el ajuste.
+                </Text>
+              ) : null}
+
+              {mlAdjustmentLines.map((line, index) => (
+                <View key={line.id} style={styles.mlLineCard}>
+                  <View style={styles.mlLineHeader}>
+                    <View>
+                      <Text style={styles.mlLineTitle}>Partida {index + 1}</Text>
+                      <Text style={styles.mlLineSubtitle}>
+                        {line.codigo} | {line.descripcion}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={styles.mlDeleteButton}
+                      onPress={() => removeMlAdjustmentLine(line.id)}
+                      disabled={isBusy}
+                    >
+                      <Text style={styles.mlDeleteButtonLabel}>Eliminar</Text>
+                    </Pressable>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Cantidad</Text>
+                  <TextInput
+                    value={line.cantidadInput}
+                    onChangeText={(value) => updateMlAdjustmentLine(line.id, 'cantidadInput', value)}
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    placeholder="Cantidad entera"
+                  />
+
+                  <View style={styles.mlLineInputsRow}>
+                    <View style={styles.mlLineInputColumn}>
+                      <Text style={styles.fieldLabel}>Surtido</Text>
+                      <TextInput
+                        value={line.surtidoInput}
+                        onChangeText={(value) => updateMlAdjustmentLine(line.id, 'surtidoInput', value)}
+                        style={styles.input}
+                        keyboardType="decimal-pad"
+                        placeholder="0"
+                      />
+                    </View>
+                    <View style={styles.mlLineInputColumn}>
+                      <Text style={styles.fieldLabel}>Rollo</Text>
+                      <TextInput
+                        value={line.rolloInput}
+                        onChangeText={(value) => updateMlAdjustmentLine(line.id, 'rolloInput', value)}
+                        style={styles.input}
+                        keyboardType="decimal-pad"
+                        placeholder="0"
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+
+              <Pressable
+                style={[styles.secondaryButton, mlAdjustmentLines.length === 0 && styles.primaryButtonDisabled]}
+                onPress={saveMlAdjustments}
+                disabled={isBusy || mlAdjustmentLines.length === 0}
+              >
+                <Text style={styles.secondaryButtonLabel}>{isBusy ? 'Guardando...' : 'Guardar ajustes'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Documento final</Text>
             <Text style={styles.fieldLabel}>{documentFieldLabel}</Text>
@@ -632,6 +1055,80 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             </Pressable>
           </View>
 
+          {canEditMlFacturacion ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Derivar pedido normal</Text>
+              <Text style={styles.hint}>
+                Captura un cliente destino y las cantidades que se transformarán en un pedido normal derivado. Esta derivación no vuelve a descontar inventario.
+              </Text>
+              <Text style={styles.fieldLabel}>No. cliente destino</Text>
+              <TextInput
+                value={splitNoClienteInput}
+                onChangeText={setSplitNoClienteInput}
+                onBlur={() => {
+                  void autofillSplitClientData();
+                }}
+                onSubmitEditing={() => {
+                  void autofillSplitClientData();
+                }}
+                style={styles.input}
+                placeholder="No. cliente del pedido derivado"
+                keyboardType="number-pad"
+              />
+              <Text style={styles.fieldLabel}>Razón social destino</Text>
+              <TextInput
+                value={splitRazonSocialInput}
+                onChangeText={setSplitRazonSocialInput}
+                style={styles.input}
+                placeholder="Razón social del cliente destino"
+              />
+              <Text style={styles.fieldLabel}>Vendedor destino</Text>
+              <TextInput
+                value={splitVendedorInput}
+                onChangeText={setSplitVendedorInput}
+                style={styles.input}
+                placeholder="Vendedor informativo para el pedido derivado"
+              />
+              <Text style={styles.mlAdjustmentWarning}>
+                Deja en blanco o en cero las líneas que no quieras derivar. Solo se enviarán las cantidades capturadas.
+              </Text>
+
+              {mlSplitLines.map((line, index) => (
+                <View key={line.id} style={styles.mlLineCard}>
+                  <View style={styles.mlLineHeader}>
+                    <View>
+                      <Text style={styles.mlLineTitle}>Partida {index + 1}</Text>
+                      <Text style={styles.mlLineSubtitle}>
+                        {line.codigo} | {line.descripcion}
+                      </Text>
+                    </View>
+                    <View style={styles.mlSplitOriginBox}>
+                      <Text style={styles.mlSplitOriginLabel}>Original</Text>
+                      <Text style={styles.mlSplitOriginValue}>{line.cantidadOriginal}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Cantidad a derivar</Text>
+                  <TextInput
+                    value={line.cantidadDerivarInput}
+                    onChangeText={(value) => updateMlSplitLine(line.id, value)}
+                    style={styles.input}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                  />
+                </View>
+              ))}
+
+              <Pressable
+                style={[styles.secondaryButton, isBusy && styles.primaryButtonDisabled]}
+                onPress={saveMlSplit}
+                disabled={isBusy}
+              >
+                <Text style={styles.secondaryButtonLabel}>{isBusy ? 'Derivando...' : 'Crear pedido derivado'}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Historial de surtido usado para documento</Text>
             {(order.historial_documentos || []).length === 0 ? (
@@ -674,7 +1171,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Documento final terminado</Text>
             <Text style={styles.meta}>
-              El pedido ya cerró el flujo y el inventario ya fue afectado. La cancelación del documento no reabre el pedido.
+              {isMercadoLibre && mlInventarioAfectado
+                ? 'El pedido ya cerró el flujo. En Mercado Libre el inventario ya había sido afectado desde almacén y la cancelación documental no reabre el pedido.'
+                : 'El pedido ya cerró el flujo y el inventario ya fue afectado. La cancelación del documento no reabre el pedido.'}
             </Text>
             <View style={styles.summaryGrid}>
               <View style={styles.summaryCell}>
@@ -704,7 +1203,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Cancelar documento final</Text>
               <Text style={styles.hint}>
-                Confirma el número exacto del documento y captura el motivo. El inventario se revertirá y el pedido permanecerá en TERMINADO.
+                {isMercadoLibre && mlInventarioAfectado
+                  ? 'Confirma el número exacto del documento y captura el motivo. En Mercado Libre el inventario se mantendrá afectado porque la salida ya ocurrió en almacén.'
+                  : 'Confirma el número exacto del documento y captura el motivo. El inventario se revertirá y el pedido permanecerá en TERMINADO.'}
               </Text>
               <Text style={styles.fieldLabel}>Confirmar {documentFieldLabel}</Text>
               <TextInput
@@ -806,6 +1307,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f3d08f',
   },
+  stageBadgeMercadoLibre: {
+    backgroundColor: '#d8f3ee',
+    borderWidth: 1,
+    borderColor: '#8ad9ca',
+  },
   stageBadgeLabel: {
     fontFamily: typography.bold,
     fontSize: 11,
@@ -818,6 +1324,9 @@ const styles = StyleSheet.create({
   },
   stageBadgeLabelPostdated: {
     color: '#9a6200',
+  },
+  stageBadgeLabelMercadoLibre: {
+    color: palette.primaryDark,
   },
   postdatedContextCard: {
     marginBottom: 8,
@@ -849,6 +1358,79 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.medium,
     fontSize: 13,
+  },
+  mlHint: {
+    marginTop: 6,
+    color: palette.primaryDark,
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  mlAdjustmentWarning: {
+    marginTop: 8,
+    color: '#8b5e00',
+    fontFamily: typography.medium,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  mlLineCard: {
+    marginTop: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: '#f9fbfc',
+    padding: 10,
+  },
+  mlLineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 10,
+  },
+  mlLineTitle: {
+    color: palette.navy,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+  },
+  mlLineSubtitle: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  mlSplitOriginBox: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  mlSplitOriginLabel: {
+    color: palette.mutedText,
+    fontFamily: typography.medium,
+    fontSize: 11,
+    textTransform: 'uppercase',
+  },
+  mlSplitOriginValue: {
+    color: palette.primaryDark,
+    fontFamily: typography.bold,
+    fontSize: 16,
+    marginTop: 2,
+  },
+  mlDeleteButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    backgroundColor: '#fde8e8',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  mlDeleteButtonLabel: {
+    color: '#a61d24',
+    fontFamily: typography.semiBold,
+    fontSize: 12,
+  },
+  mlLineInputsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mlLineInputColumn: {
+    flex: 1,
   },
   postdatedHint: {
     marginTop: 6,
