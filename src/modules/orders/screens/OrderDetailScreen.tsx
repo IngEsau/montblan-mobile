@@ -139,7 +139,17 @@ export function OrderDetailScreen({
     );
   }, [normalizedRole, user?.permissions]);
 
-  const canSendToAuthorization = useMemo(() => mode === 'sales' && order?.status === 10, [mode, order?.status]);
+  const canOperateSales = useMemo(() => {
+    const permissionFlags = user?.permissions;
+    if (permissionFlags && typeof permissionFlags.can_sales === 'boolean') {
+      return Boolean(permissionFlags.can_sales);
+    }
+    return mode === 'sales';
+  }, [mode, user?.permissions]);
+  const canSendToAuthorization = useMemo(
+    () => canOperateSales && order?.status === 10,
+    [canOperateSales, order?.status],
+  );
   const isPostdatedLocked = useMemo(() => {
     if (!order?.postfechado || !order.fecha_entrega) {
       return false;
@@ -148,13 +158,28 @@ export function OrderDetailScreen({
     unlockAt.setDate(unlockAt.getDate() - 1);
     return Date.now() < unlockAt.getTime();
   }, [order?.fecha_entrega, order?.postfechado]);
-  const canCaptureWarehouse = useMemo(
-    () => mode === 'warehouse' && order?.status === 30,
-    [mode, order?.status],
-  );
+  const canCaptureWarehouse = useMemo(() => {
+    const permissionFlags = user?.permissions;
+    const canWarehouse =
+      permissionFlags && typeof permissionFlags.can_warehouse === 'boolean'
+        ? Boolean(permissionFlags.can_warehouse)
+        : mode === 'warehouse';
+    return canWarehouse && order?.status === 30;
+  }, [mode, order?.status, user?.permissions]);
   const canOperateCxc = useMemo(
-    () => mode === 'cxc' && canSeeCxcStage && (order?.status === 20 || order?.status === 45 || order?.status === 50),
-    [canSeeCxcStage, mode, order?.status],
+    () => canSeeCxcStage && (order?.status === 20 || order?.status === 45 || order?.status === 50),
+    [canSeeCxcStage, order?.status],
+  );
+  const canEditMlFacturacionFromDetail = useMemo(
+    () =>
+      Boolean(
+        order?.status === 45 &&
+          order?.es_mercado_libre &&
+          ((order?.can_edit_ml_facturacion ?? false) ||
+            (user?.permissions?.can_edit_ml_facturacion ?? false) ||
+            (user?.permissions?.can_cxc ?? false)),
+      ),
+    [order?.can_edit_ml_facturacion, order?.es_mercado_libre, order?.status, user?.permissions],
   );
   const canOpenFinishedList = useMemo(
     () => canSeeFinishedStage && order?.status === 50,
@@ -505,7 +530,13 @@ export function OrderDetailScreen({
           onPress={() => onOpenCxcOperation(order.id)}
         >
           <Text style={styles.actionLabel}>
-            {order.status === 20 ? 'Abrir autorización' : order.status === 45 ? 'Abrir facturación' : 'Abrir cancelación de documento'}
+            {order.status === 20
+              ? 'Abrir autorización'
+              : canEditMlFacturacionFromDetail
+                ? 'Ajustar / derivar ML'
+                : order.status === 45
+                  ? 'Abrir facturación'
+                  : 'Abrir cancelación de documento'}
           </Text>
         </Pressable>
       ) : null}
