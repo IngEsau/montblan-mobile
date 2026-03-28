@@ -1214,7 +1214,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       {(canViewEvidence || canManageEvidence || pendingEvidence.length > 0) ? (
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderInline}>
-            <View>
+            <View style={styles.sectionHeaderContent}>
               <Text style={styles.sectionTitle}>EVIDENCIA</Text>
               <Text style={styles.sectionMeta}>
                 Solo el vendedor que capturó el pedido y CXC pueden verla.
@@ -1611,9 +1611,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   sectionHeaderInline: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  sectionHeaderContent: {
+    width: '100%',
     marginBottom: 8,
   },
   sectionMeta: {
@@ -1632,6 +1634,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 7,
+    alignSelf: 'flex-start',
   },
   smallButtonLabel: {
     color: '#fff',
