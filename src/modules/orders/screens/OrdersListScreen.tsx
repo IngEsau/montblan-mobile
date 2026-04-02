@@ -149,6 +149,11 @@ export function OrdersListScreen({
     return orders;
   }, [mode, orders, warehouseStage]);
 
+  const canShowEvidenceIndicatorByMode = useMemo(
+    () => mode === 'sales' || mode === 'cxc',
+    [mode],
+  );
+
   const modeButtons = useMemo(
     () =>
       resolvedModes.map((key) => ({
@@ -383,7 +388,11 @@ export function OrdersListScreen({
           }
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
-            <OrderCard order={item} onPress={() => onOpenDetail(item.id, mode)} />
+            <OrderCard
+              order={item}
+              onPress={() => onOpenDetail(item.id, mode)}
+              showEvidenceIndicator={canShowEvidenceIndicatorByMode}
+            />
           )}
           ListEmptyComponent={
             <EmptyState

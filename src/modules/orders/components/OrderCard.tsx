@@ -10,15 +10,16 @@ import { resolveOrderStatusLabel, resolveOrderStatusTone } from '../utils/status
 type OrderCardProps = {
   order: PedidoListItem;
   onPress: () => void;
+  showEvidenceIndicator?: boolean;
 };
 
-export function OrderCard({ order, onPress }: OrderCardProps) {
+export function OrderCard({ order, onPress, showEvidenceIndicator = false }: OrderCardProps) {
   const isFinished = order.status === 50;
   const isCanceled = order.status === 1 || Boolean(order.documento_cancelado);
   const primaryStatusLabel = resolveOrderStatusLabel(order.status, order.status_label, order.is_standby);
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
-  const canSeeEvidenceIndicator = Boolean(order.can_view_evidence || order.can_manage_evidence);
+  const canSeeEvidenceIndicator = Boolean(order.can_view_evidence || order.can_manage_evidence || showEvidenceIndicator);
   const hasEvidence = Boolean(order.has_evidence);
   const inventoryFeedback = order.inventory_feedback ?? [];
   const visibleInventoryFeedback = inventoryFeedback.slice(0, 2);
