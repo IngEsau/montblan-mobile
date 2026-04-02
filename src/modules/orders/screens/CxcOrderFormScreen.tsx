@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +24,7 @@ import { resolveOrderStageLabel } from '../utils/status';
 type CxcOrderFormScreenProps = {
   orderId: number;
   onDone: (orderId: number) => void;
+  onOpenDerivedOrder?: (orderId: number) => void;
 };
 
 type MlAdjustmentLineDraft = {
@@ -66,8 +67,8 @@ function buildMlAdjustmentLine(line: PedidoDetalleLinea): MlAdjustmentLineDraft 
     codigo: line.codigo || '-',
     descripcion: line.descripcion || 'Sin descripción',
     cantidadInput: String(line.cantidad ?? 0),
-    surtidoInput: String(line.surtido ?? 0),
-    rolloInput: String(line.rollo ?? 0),
+    surtidoInput: normalizeWholeNumberValue(line.surtido),
+    rolloInput: normalizeWholeNumberValue(line.rollo),
   };
 }
 
@@ -85,17 +86,23 @@ function normalizeIntegerInput(value: string) {
   return value.replace(/[^\d]/g, '');
 }
 
-function normalizeDecimalInput(value: string) {
-  const normalized = value.replace(/,/g, '.').replace(/[^\d.]/g, '');
-  const parts = normalized.split('.');
-  if (parts.length <= 1) {
-    return normalized;
+function normalizeWholeNumberValue(value: number | null | undefined) {
+  if (value === null || typeof value === 'undefined' || Number.isNaN(Number(value))) {
+    return '0';
   }
 
-  return `${parts[0]}.${parts.slice(1).join('')}`;
+  return String(Math.max(0, Math.round(Number(value))));
 }
 
-export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps) {
+function normalizeRole(role: string | null | undefined) {
+  return String(role ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .trim();
+}
+
+export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcOrderFormScreenProps) {
   const { token, user } = useAuth();
   const [order, setOrder] = useState<Pedido | null>(null);
   const [mlAdjustmentLines, setMlAdjustmentLines] = useState<MlAdjustmentLineDraft[]>([]);
@@ -110,7 +117,20 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [specialPriceError, setSpecialPriceError] = useState<string | null>(null);
+  const lastAutofilledSplitClientRef = useRef('');
 
+  const normalizedRole = useMemo(() => normalizeRole(user?.rol), [user?.rol]);
+  const roleCanCxc = useMemo(
+    () =>
+      normalizedRole.includes('CTAS') ||
+      normalizedRole.includes('COBRAR') ||
+      normalizedRole.includes('CXC') ||
+      normalizedRole.includes('THECREATOR') ||
+      normalizedRole.includes('ADMIN') ||
+      normalizedRole.includes('SUPER'),
+    [normalizedRole],
+  );
   const isFactura = useMemo(() => (order?.tipo_fac_rem ?? 10) === 10, [order?.tipo_fac_rem]);
   const isAuthorizationStage = useMemo(() => (order?.status ?? 0) === 20, [order?.status]);
   const isBillingStage = useMemo(() => (order?.status ?? 0) === 45, [order?.status]);
@@ -122,12 +142,14 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           order?.es_mercado_libre &&
           ((order?.can_edit_ml_facturacion ?? false) ||
             (user?.permissions?.can_edit_ml_facturacion ?? false) ||
-            (user?.permissions?.can_cxc ?? false)),
+            (user?.permissions?.can_cxc ?? false) ||
+            roleCanCxc),
       ),
     [
       isBillingStage,
       order?.can_edit_ml_facturacion,
       order?.es_mercado_libre,
+      roleCanCxc,
       user?.permissions?.can_cxc,
       user?.permissions?.can_edit_ml_facturacion,
     ],
@@ -244,6 +266,10 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     () => (canViewEvidence ? order?.evidencias || [] : []),
     [canViewEvidence, order?.evidencias],
   );
+  const shouldShowEvidenceSection = useMemo(
+    () => canManageEvidence || existingEvidence.length > 0,
+    [canManageEvidence, existingEvidence.length],
+  );
 
   const fetchCxcData = useCallback(async () => {
     if (!token) {
@@ -266,6 +292,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       setCancelReason('');
 
       setErrorMessage(null);
+      setSpecialPriceError(null);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible cargar la operación de CXC.';
       setErrorMessage(message);
@@ -284,7 +311,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                 [field]:
                   field === 'cantidadInput'
                     ? normalizeIntegerInput(value)
-                    : normalizeDecimalInput(value),
+                    : normalizeIntegerInput(value),
               }
             : line,
         ),
@@ -308,6 +335,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
   const removeMlAdjustmentLine = useCallback((lineId: number) => {
     setMlAdjustmentLines((prev) => prev.filter((line) => line.id !== lineId));
+    setMlSplitLines((prev) => prev.filter((line) => line.id !== lineId));
   }, []);
 
   useEffect(() => {
@@ -375,6 +403,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
     setIsBusy(true);
     setErrorMessage(null);
+    setSpecialPriceError(null);
     try {
       const response = await ordersApi.updateCxc(token, order.id, {
         venta_especial: aplicar ? 1 : 0,
@@ -386,7 +415,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       await fetchCxcData();
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible actualizar el precio especial.';
-      setErrorMessage(message);
+      setSpecialPriceError(message);
     } finally {
       setIsBusy(false);
     }
@@ -415,21 +444,21 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     }> = [];
     for (const line of mlAdjustmentLines) {
       const cantidad = Number.parseInt(line.cantidadInput, 10);
-      const surtido = line.surtidoInput.trim() === '' ? NaN : Number(line.surtidoInput);
-      const rollo = line.rolloInput.trim() === '' ? NaN : Number(line.rolloInput);
+      const surtido = line.surtidoInput.trim() === '' ? NaN : Number.parseInt(line.surtidoInput, 10);
+      const rollo = line.rolloInput.trim() === '' ? NaN : Number.parseInt(line.rolloInput, 10);
 
       if (!Number.isInteger(cantidad) || cantidad <= 0) {
         setErrorMessage(`La cantidad debe ser un entero mayor a 0 en la línea ${line.codigo}.`);
         return;
       }
 
-      if (!Number.isFinite(surtido) || surtido < 0) {
-        setErrorMessage(`El surtido debe ser un número mayor o igual a 0 en la línea ${line.codigo}.`);
+      if (!Number.isInteger(surtido) || surtido < 0) {
+        setErrorMessage(`El surtido debe ser un entero mayor o igual a 0 en la línea ${line.codigo}.`);
         return;
       }
 
-      if (!Number.isFinite(rollo) || rollo < 0) {
-        setErrorMessage(`El rollo debe ser un número mayor o igual a 0 en la línea ${line.codigo}.`);
+      if (!Number.isInteger(rollo) || rollo < 0) {
+        setErrorMessage(`El rollo debe ser un entero mayor o igual a 0 en la línea ${line.codigo}.`);
         return;
       }
 
@@ -460,9 +489,19 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
     }
   };
 
-  const autofillSplitClientData = useCallback(async () => {
-    const clave = splitNoClienteInput.trim();
+  const autofillSplitClientData = useCallback(async (rawClave?: string, clearOnNotFound = false) => {
+    const clave = (rawClave ?? splitNoClienteInput).trim();
     if (!token || !clave) {
+      if (clearOnNotFound) {
+        setSplitRazonSocialInput('');
+        if (!splitVendedorInput.trim()) {
+          setSplitVendedorInput('');
+        }
+      }
+      return;
+    }
+
+    if (lastAutofilledSplitClientRef.current === clave) {
       return;
     }
 
@@ -481,12 +520,37 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
       if (!splitVendedorInput.trim() && vendedorSugerido) {
         setSplitVendedorInput(vendedorSugerido);
       }
+      lastAutofilledSplitClientRef.current = cliente.clave || clave;
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) {
+        lastAutofilledSplitClientRef.current = '';
+        if (clearOnNotFound) {
+          setSplitRazonSocialInput('');
+        }
         return;
       }
+      lastAutofilledSplitClientRef.current = '';
     }
   }, [splitNoClienteInput, splitVendedorInput, token]);
+
+  useEffect(() => {
+    const clave = splitNoClienteInput.trim();
+    if (!clave) {
+      lastAutofilledSplitClientRef.current = '';
+      setSplitRazonSocialInput('');
+      return;
+    }
+
+    if (clave.length < 4) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void autofillSplitClientData(clave, false);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [autofillSplitClientData, splitNoClienteInput]);
 
   const saveMlSplit = async () => {
     if (!token || !order || isBusy) {
@@ -553,11 +617,38 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
           lineas,
         },
       });
-      Alert.alert(
-        'Pedido derivado creado',
-        `${response.message}\n\nLa derivación generó un pedido normal y no volverá a descontar inventario.`,
-      );
       await fetchCxcData();
+      const derivedOrderId = response.derived_item?.id ?? null;
+      const successMessage = derivedOrderId
+        ? `${response.message}\n\nSe creó el pedido #${derivedOrderId}. El inventario ya estaba preafectado y este flujo no volverá a descontarlo.`
+        : `${response.message}\n\nLa derivación generó un pedido normal y no volverá a descontar inventario.`;
+
+      if (derivedOrderId && onOpenDerivedOrder) {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          const shouldOpenDerived = window.confirm(`${successMessage}\n\n¿Quieres abrir el pedido derivado ahora?`);
+          if (shouldOpenDerived) {
+            onOpenDerivedOrder(derivedOrderId);
+            return;
+          }
+
+          Alert.alert('Pedido derivado creado', successMessage);
+          return;
+        }
+
+        Alert.alert('Pedido derivado creado', successMessage, [
+          {
+            text: 'Seguir aquí',
+            style: 'cancel',
+          },
+          {
+            text: 'Ver pedido derivado',
+            onPress: () => onOpenDerivedOrder(derivedOrderId),
+          },
+        ]);
+        return;
+      }
+
+      Alert.alert('Pedido derivado creado', successMessage);
     } catch (error) {
       const message = error instanceof ApiError ? error.message : 'No fue posible derivar el pedido normal desde Mercado Libre.';
       setErrorMessage(message);
@@ -869,15 +960,17 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
         ))}
       </View>
 
-      <EvidenceSection
-        title="EVIDENCIA"
-        canView={canViewEvidence}
-        canManage={canManageEvidence}
-        evidences={existingEvidence}
-        uploading={isBusy}
-        onPreviewEvidence={previewOrderEvidence}
-        onDownloadEvidence={downloadOrderEvidence}
-      />
+      {shouldShowEvidenceSection ? (
+        <EvidenceSection
+          title="EVIDENCIA"
+          canView={canViewEvidence}
+          canManage={canManageEvidence}
+          evidences={existingEvidence}
+          uploading={isBusy}
+          onPreviewEvidence={previewOrderEvidence}
+          onDownloadEvidence={downloadOrderEvidence}
+        />
+      ) : null}
 
       {isAuthorizationStage ? (
         <>
@@ -891,6 +984,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             </Text>
             <Text style={styles.fieldLabel}>No. pedido</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={noPedidoInput}
               onChangeText={setNoPedidoInput}
               style={styles.input}
@@ -932,10 +1026,10 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Ajuste de partidas Mercado Libre</Text>
               <Text style={styles.hint}>
-                Ajusta únicamente las líneas activas del pedido ML pendiente en facturación. Este guardado no vuelve a descontar inventario; solo actualiza el detalle que se enviará al backend.
+                Ajusta únicamente las líneas activas del pedido ML pendiente en facturación. Este guardado no vuelve a descontar inventario; solo actualiza el detalle.
               </Text>
               <Text style={styles.mlAdjustmentWarning}>
-                Si eliminas una línea, ya no se enviará en el guardado. El backend toma el payload completo de líneas activas.
+                Si eliminas una línea, ya no se enviará en el guardado.
               </Text>
 
               {mlAdjustmentLines.length === 0 ? (
@@ -964,6 +1058,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
                   <Text style={styles.fieldLabel}>Cantidad</Text>
                   <TextInput
+              placeholderTextColor={palette.mutedText}
                     value={line.cantidadInput}
                     onChangeText={(value) => updateMlAdjustmentLine(line.id, 'cantidadInput', value)}
                     style={styles.input}
@@ -975,20 +1070,22 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                     <View style={styles.mlLineInputColumn}>
                       <Text style={styles.fieldLabel}>Surtido</Text>
                       <TextInput
+              placeholderTextColor={palette.mutedText}
                         value={line.surtidoInput}
                         onChangeText={(value) => updateMlAdjustmentLine(line.id, 'surtidoInput', value)}
                         style={styles.input}
-                        keyboardType="decimal-pad"
+                        keyboardType="number-pad"
                         placeholder="0"
                       />
                     </View>
                     <View style={styles.mlLineInputColumn}>
                       <Text style={styles.fieldLabel}>Rollo</Text>
                       <TextInput
+              placeholderTextColor={palette.mutedText}
                         value={line.rolloInput}
                         onChangeText={(value) => updateMlAdjustmentLine(line.id, 'rolloInput', value)}
                         style={styles.input}
-                        keyboardType="decimal-pad"
+                        keyboardType="number-pad"
                         placeholder="0"
                       />
                     </View>
@@ -1010,6 +1107,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
             <Text style={styles.cardTitle}>Documento final</Text>
             <Text style={styles.fieldLabel}>{documentFieldLabel}</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={noFacturaInput}
               onChangeText={setNoFacturaInput}
               style={styles.input}
@@ -1061,6 +1159,9 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
                     : 'Aplicar precio especial'}
               </Text>
             </Pressable>
+            {specialPriceError ? (
+              <Text style={styles.cardError}>{specialPriceError}</Text>
+            ) : null}
           </View>
 
           {canEditMlFacturacion ? (
@@ -1071,6 +1172,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               </Text>
               <Text style={styles.fieldLabel}>No. cliente destino</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={splitNoClienteInput}
                 onChangeText={setSplitNoClienteInput}
                 onBlur={() => {
@@ -1085,6 +1187,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               />
               <Text style={styles.fieldLabel}>Razón social destino</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={splitRazonSocialInput}
                 onChangeText={setSplitRazonSocialInput}
                 style={styles.input}
@@ -1092,6 +1195,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               />
               <Text style={styles.fieldLabel}>Vendedor destino</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={splitVendedorInput}
                 onChangeText={setSplitVendedorInput}
                 style={styles.input}
@@ -1118,6 +1222,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
 
                   <Text style={styles.fieldLabel}>Cantidad a derivar</Text>
                   <TextInput
+              placeholderTextColor={palette.mutedText}
                     value={line.cantidadDerivarInput}
                     onChangeText={(value) => updateMlSplitLine(line.id, value)}
                     style={styles.input}
@@ -1217,6 +1322,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               </Text>
               <Text style={styles.fieldLabel}>Confirmar {documentFieldLabel}</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={cancelConfirmInput}
                 onChangeText={setCancelConfirmInput}
                 style={styles.input}
@@ -1225,6 +1331,7 @@ export function CxcOrderFormScreen({ orderId, onDone }: CxcOrderFormScreenProps)
               />
               <Text style={styles.fieldLabel}>Motivo de cancelación</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={cancelReason}
                 onChangeText={setCancelReason}
                 style={[styles.input, styles.textarea]}
@@ -1316,9 +1423,9 @@ const styles = StyleSheet.create({
     borderColor: '#f3d08f',
   },
   stageBadgeMercadoLibre: {
-    backgroundColor: '#d8f3ee',
+    backgroundColor: '#fff3d9',
     borderWidth: 1,
-    borderColor: '#8ad9ca',
+    borderColor: '#f3d08f',
   },
   stageBadgeLabel: {
     fontFamily: typography.bold,
@@ -1334,7 +1441,7 @@ const styles = StyleSheet.create({
     color: '#9a6200',
   },
   stageBadgeLabelMercadoLibre: {
-    color: palette.primaryDark,
+    color: '#9a6200',
   },
   postdatedContextCard: {
     marginBottom: 8,
@@ -1692,6 +1799,13 @@ const styles = StyleSheet.create({
     color: palette.danger,
     fontFamily: typography.medium,
     fontSize: 12,
+  },
+  cardError: {
+    marginTop: 14,
+    color: palette.danger,
+    fontFamily: typography.medium,
+    fontSize: 12,
+    lineHeight: 18,
   },
   warningText: {
     marginTop: 12,

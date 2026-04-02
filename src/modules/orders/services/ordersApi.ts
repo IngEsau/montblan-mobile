@@ -80,7 +80,7 @@ export const ordersApi = {
     }),
 
   clienteByClave: (token: string, clave: string) =>
-    apiRequest<ClienteByClaveResponse>(`/clientes/by-clave?clave=${encodeURIComponent(clave)}`, {
+    apiRequest<ClienteByClaveResponse>(`/clientes/by-clave/${encodeURIComponent(clave)}`, {
       token,
     }),
 

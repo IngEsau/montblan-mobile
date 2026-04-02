@@ -1,5 +1,13 @@
 import { PaginatedResponse } from '../catalog/types';
 
+export type PedidoInventoryFeedbackItem = {
+  codigo: string | null;
+  descripcion: string | null;
+  inventario_inicial: number;
+  cantidad_pedido: number;
+  inventario_resultante: number;
+};
+
 export type PedidoListItem = {
   id: number;
   no_pedido: string | null;
@@ -22,7 +30,11 @@ export type PedidoListItem = {
   inventario_preafectado?: boolean;
   ml_pendiente_facturacion?: boolean;
   can_edit_ml_facturacion?: boolean;
+  can_view_evidence?: boolean;
+  can_manage_evidence?: boolean;
+  has_evidence?: boolean;
   venta_especial?: boolean;
+  inventory_feedback?: PedidoInventoryFeedbackItem[];
   subtotal: number;
   iva: number;
   total: number;
@@ -306,6 +318,7 @@ export type PedidoCxcUpdateResponse = {
   ok: boolean;
   message: string;
   item: Pedido;
+  derived_item?: Pedido;
 };
 
 export type PedidoHistorialDocumento = {

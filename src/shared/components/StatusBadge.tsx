@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { palette } from '../theme/palette';
 
-type StatusTone = 'primary' | 'warning' | 'danger' | 'success' | 'default';
+type StatusTone = 'primary' | 'warning' | 'danger' | 'success' | 'default' | 'mercadoLibre';
 
 type StatusBadgeProps = {
   label: string;
@@ -14,6 +14,7 @@ const toneStyles: Record<StatusTone, { bg: string; text: string }> = {
   danger: { bg: '#ffe1e6', text: '#9a3040' },
   success: { bg: '#daf7f7', text: '#107a7b' },
   default: { bg: '#e9eef3', text: '#44515f' },
+  mercadoLibre: { bg: '#fff3d9', text: '#9a6200' },
 };
 
 export function StatusBadge({ label, tone = 'default' }: StatusBadgeProps) {

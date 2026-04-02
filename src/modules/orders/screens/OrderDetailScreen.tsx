@@ -50,6 +50,14 @@ function sanitizeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]+/g, '_');
 }
 
+function formatWholeNumber(value: number | null | undefined) {
+  if (value === null || typeof value === 'undefined' || Number.isNaN(Number(value))) {
+    return '0';
+  }
+
+  return String(Math.max(0, Math.round(Number(value))));
+}
+
 export function OrderDetailScreen({
   orderId,
   mode,
@@ -105,14 +113,14 @@ export function OrderDetailScreen({
 
   const canSeeFinishedStage = useMemo(() => {
     const permissionFlags = user?.permissions;
-    if (permissionFlags && typeof permissionFlags.can_warehouse === 'boolean') {
-      return Boolean(permissionFlags.can_warehouse);
-    }
+    const byPermission = permissionFlags && typeof permissionFlags.can_warehouse === 'boolean'
+      ? Boolean(permissionFlags.can_warehouse)
+      : false;
     if (normalizedRole === '') {
       return true;
     }
 
-    return (
+    return byPermission || (
       normalizedRole.includes('ALMACEN') ||
       normalizedRole.includes('THECREATOR') ||
       normalizedRole.includes('ADMIN') ||
@@ -122,14 +130,14 @@ export function OrderDetailScreen({
 
   const canSeeCxcStage = useMemo(() => {
     const permissionFlags = user?.permissions;
-    if (permissionFlags && typeof permissionFlags.can_cxc === 'boolean') {
-      return Boolean(permissionFlags.can_cxc);
-    }
+    const byPermission = permissionFlags && typeof permissionFlags.can_cxc === 'boolean'
+      ? Boolean(permissionFlags.can_cxc)
+      : false;
     if (normalizedRole === '') {
       return true;
     }
 
-    return (
+    return byPermission || (
       normalizedRole.includes('CTAS') ||
       normalizedRole.includes('COBRAR') ||
       normalizedRole.includes('CXC') ||
@@ -141,11 +149,11 @@ export function OrderDetailScreen({
 
   const canOperateSales = useMemo(() => {
     const permissionFlags = user?.permissions;
-    if (permissionFlags && typeof permissionFlags.can_sales === 'boolean') {
-      return Boolean(permissionFlags.can_sales);
-    }
-    return mode === 'sales';
-  }, [mode, user?.permissions]);
+    const byPermission = permissionFlags && typeof permissionFlags.can_sales === 'boolean'
+      ? Boolean(permissionFlags.can_sales)
+      : false;
+    return byPermission || mode === 'sales' || normalizedRole === '' || normalizedRole.includes('VENTAS') || normalizedRole.includes('VENDEDOR') || normalizedRole.includes('THECREATOR') || normalizedRole.includes('ADMIN') || normalizedRole.includes('SUPER');
+  }, [mode, normalizedRole, user?.permissions]);
   const canSendToAuthorization = useMemo(
     () => canOperateSales && order?.status === 10,
     [canOperateSales, order?.status],
@@ -160,12 +168,12 @@ export function OrderDetailScreen({
   }, [order?.fecha_entrega, order?.postfechado]);
   const canCaptureWarehouse = useMemo(() => {
     const permissionFlags = user?.permissions;
-    const canWarehouse =
-      permissionFlags && typeof permissionFlags.can_warehouse === 'boolean'
-        ? Boolean(permissionFlags.can_warehouse)
-        : mode === 'warehouse';
-    return canWarehouse && order?.status === 30;
-  }, [mode, order?.status, user?.permissions]);
+    const byPermission = permissionFlags && typeof permissionFlags.can_warehouse === 'boolean'
+      ? Boolean(permissionFlags.can_warehouse)
+      : false;
+    const byRole = mode === 'warehouse' || normalizedRole === '' || normalizedRole.includes('ALMACEN') || normalizedRole.includes('THECREATOR') || normalizedRole.includes('ADMIN') || normalizedRole.includes('SUPER');
+    return (byPermission || byRole) && order?.status === 30;
+  }, [mode, normalizedRole, order?.status, user?.permissions]);
   const canOperateCxc = useMemo(
     () => canSeeCxcStage && (order?.status === 20 || order?.status === 45 || order?.status === 50),
     [canSeeCxcStage, order?.status],
@@ -177,13 +185,23 @@ export function OrderDetailScreen({
           order?.es_mercado_libre &&
           ((order?.can_edit_ml_facturacion ?? false) ||
             (user?.permissions?.can_edit_ml_facturacion ?? false) ||
-            (user?.permissions?.can_cxc ?? false)),
+            (user?.permissions?.can_cxc ?? false) ||
+            normalizedRole.includes('CTAS') ||
+            normalizedRole.includes('COBRAR') ||
+            normalizedRole.includes('CXC') ||
+            normalizedRole.includes('THECREATOR') ||
+            normalizedRole.includes('ADMIN') ||
+            normalizedRole.includes('SUPER')),
       ),
-    [order?.can_edit_ml_facturacion, order?.es_mercado_libre, order?.status, user?.permissions],
+    [normalizedRole, order?.can_edit_ml_facturacion, order?.es_mercado_libre, order?.status, user?.permissions],
   );
   const canOpenFinishedList = useMemo(
     () => canSeeFinishedStage && order?.status === 50,
     [canSeeFinishedStage, order?.status],
+  );
+  const showWarehouseStatusBadge = useMemo(
+    () => Boolean(order?.almacen_status) && order?.status === 30,
+    [order?.almacen_status, order?.status],
   );
 
   const sendToAuthorization = async () => {
@@ -298,11 +316,11 @@ export function OrderDetailScreen({
             tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
-          {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="primary" /> : null}
+          {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="mercadoLibre" /> : null}
           {order.origen_ml ? <StatusBadge label="DERIVADO ML" tone="default" /> : null}
           {order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
           {order.status !== 1 && order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
-          {order.almacen_status ? <StatusBadge label={order.almacen_status} tone="warning" /> : null}
+          {showWarehouseStatusBadge ? <StatusBadge label={order.almacen_status || ''} tone="warning" /> : null}
         </View>
 
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
@@ -336,9 +354,14 @@ export function OrderDetailScreen({
       </View>
 
       {order.observaciones ? (
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Observaciones</Text>
+        <View style={order.origen_ml ? styles.derivedObservationCard : styles.sectionCard}>
+          <Text style={order.origen_ml ? styles.derivedObservationTitle : styles.sectionTitle}>Observaciones</Text>
           <Text style={styles.observaciones}>{order.observaciones}</Text>
+          {order.origen_ml ? (
+            <Text style={styles.derivedObservationMeta}>
+              Contexto: este pedido fue generado desde un desglose final de Mercado Libre y conserva inventario preafectado desde el pedido origen.
+            </Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -350,15 +373,15 @@ export function OrderDetailScreen({
       ) : null}
 
       {order.es_mercado_libre ? (
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Mercado Libre</Text>
-          <Text style={styles.observaciones}>
+        <View style={styles.mlInfoCard}>
+          <Text style={styles.mlInfoTitle}>Mercado Libre</Text>
+          <Text style={styles.mlInfoText}>
             {order.ml_inventario_afectado
               ? 'El inventario de este pedido ya fue afectado desde almacén para reflejar la salida física del producto.'
               : 'Este pedido está identificado como Mercado Libre. El inventario se afectará cuando salga de almacén hacia facturación.'}
           </Text>
           {order.ml_pendiente_facturacion ? (
-            <Text style={styles.meta}>
+            <Text style={styles.mlInfoMeta}>
               Pendiente por facturar: sí. Facturación no volverá a descontar inventario.
             </Text>
           ) : null}
@@ -377,7 +400,7 @@ export function OrderDetailScreen({
         </View>
       ) : null}
 
-      {(order.can_view_evidence || order.can_manage_evidence) ? (
+      {(order.can_view_evidence || order.can_manage_evidence) && (order.evidencias?.length || 0) > 0 ? (
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Evidencia</Text>
           <Text style={styles.meta}>
@@ -389,38 +412,34 @@ export function OrderDetailScreen({
               {order.evidence_max_file_size_label || formatBytes(order.evidence_max_file_size_bytes || order.max_upload_bytes)}
             </Text>
           ) : null}
-          {order.evidencias && order.evidencias.length > 0 ? (
-            order.evidencias.map((item) => (
-              <View key={`evidence-${item.id}`} style={styles.evidenceCard}>
-                <View style={styles.evidenceInfo}>
-                  <Text style={styles.evidenceName}>{item.nombre_original}</Text>
-                  <Text style={styles.evidenceMeta}>
-                    {(item.extension || '-').toUpperCase()} | {formatBytes(item.tamano_bytes)}
-                  </Text>
-                </View>
-                <View style={styles.evidenceActions}>
-                  <Pressable
-                    style={[styles.evidenceButton, styles.evidencePreviewButton]}
-                    onPress={() => handleEvidenceAction(item, 'preview')}
-                    disabled={activeEvidenceId === item.id}
-                  >
-                    <Text style={styles.evidenceButtonLabel}>
-                      {activeEvidenceId === item.id ? 'Procesando...' : 'Ver'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.evidenceButton, styles.evidenceDownloadButton]}
-                    onPress={() => handleEvidenceAction(item, 'download')}
-                    disabled={activeEvidenceId === item.id}
-                  >
-                    <Text style={styles.evidenceButtonLabel}>Descargar</Text>
-                  </Pressable>
-                </View>
+          {order.evidencias?.map((item) => (
+            <View key={`evidence-${item.id}`} style={styles.evidenceCard}>
+              <View style={styles.evidenceInfo}>
+                <Text style={styles.evidenceName}>{item.nombre_original}</Text>
+                <Text style={styles.evidenceMeta}>
+                  {(item.extension || '-').toUpperCase()} | {formatBytes(item.tamano_bytes)}
+                </Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.meta}>Este pedido no tiene evidencia activa.</Text>
-          )}
+              <View style={styles.evidenceActions}>
+                <Pressable
+                  style={[styles.evidenceButton, styles.evidencePreviewButton]}
+                  onPress={() => handleEvidenceAction(item, 'preview')}
+                  disabled={activeEvidenceId === item.id}
+                >
+                  <Text style={styles.evidenceButtonLabel}>
+                    {activeEvidenceId === item.id ? 'Procesando...' : 'Ver'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.evidenceButton, styles.evidenceDownloadButton]}
+                  onPress={() => handleEvidenceAction(item, 'download')}
+                  disabled={activeEvidenceId === item.id}
+                >
+                  <Text style={styles.evidenceButtonLabel}>Descargar</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
         </View>
       ) : null}
 
@@ -471,10 +490,10 @@ export function OrderDetailScreen({
               </View>
               <Text style={styles.lineDesc}>{line.descripcion || line.codigo || 'Producto sin nombre'}</Text>
               <Text style={styles.metaRow}>
-                Cantidad: {line.cantidad} | Surtido: {line.surtido ?? 0} | Faltante: {line.faltante}
+                Cantidad: {formatWholeNumber(line.cantidad)} | Surtido: {formatWholeNumber(line.surtido)} | Faltante: {formatWholeNumber(line.faltante)}
               </Text>
               <Text style={styles.metaRow}>
-                Rollos: {line.rollo ?? 0} | Inventario: {line.inventario_disponible ?? '-'}
+                Rollos: {formatWholeNumber(line.rollo)} | Inventario: {line.inventario_disponible ?? '-'}
               </Text>
               {order.venta_especial && line.precio_especial != null ? (
                 <Text style={styles.metaRow}>
@@ -633,16 +652,62 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
+  mlInfoCard: {
+    backgroundColor: '#eef7fb',
+    borderWidth: 1,
+    borderColor: '#c6dcea',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  derivedObservationCard: {
+    backgroundColor: '#f6f9fc',
+    borderWidth: 1,
+    borderColor: '#d5e0ea',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
   sectionTitle: {
     color: palette.navy,
     fontFamily: typography.semiBold,
     fontSize: 15,
     marginBottom: 10,
   },
+  derivedObservationTitle: {
+    color: '#32556f',
+    fontFamily: typography.semiBold,
+    fontSize: 15,
+    marginBottom: 8,
+  },
+  mlInfoTitle: {
+    color: '#1d5f7a',
+    fontFamily: typography.semiBold,
+    fontSize: 15,
+    marginBottom: 8,
+  },
   observaciones: {
     color: palette.text,
     fontFamily: typography.regular,
     lineHeight: 20,
+  },
+  mlInfoText: {
+    color: '#24485d',
+    fontFamily: typography.regular,
+    lineHeight: 20,
+  },
+  mlInfoMeta: {
+    color: '#3f6b81',
+    fontFamily: typography.medium,
+    fontSize: 12,
+    marginTop: 8,
+  },
+  derivedObservationMeta: {
+    color: '#587188',
+    fontFamily: typography.medium,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 10,
   },
   evidenceCard: {
     borderTopWidth: 1,

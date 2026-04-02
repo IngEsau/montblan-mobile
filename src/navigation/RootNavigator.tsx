@@ -45,15 +45,13 @@ function TabsNavigator({ rootNavigation }: TabsNavigatorProps) {
 
   const hasRole = role.trim().length > 0;
   const isAdmin = role.includes('THECREATOR') || role.includes('ADMIN') || role.includes('SUPER');
-  const canSales = hasPermissionFlags
-    ? Boolean(permissionFlags.can_sales)
-    : !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
-  const canWarehouse = hasPermissionFlags
-    ? Boolean(permissionFlags.can_warehouse)
-    : !hasRole || isAdmin || role.includes('ALMACEN');
-  const canCxc = hasPermissionFlags
-    ? Boolean(permissionFlags.can_cxc)
-    : isAdmin || role.includes('CTAS') || role.includes('COBRAR') || role.includes('CXC');
+  const canSalesByRole = !hasRole || isAdmin || role.includes('VENTAS') || role.includes('VENDEDOR');
+  const canWarehouseByRole = !hasRole || isAdmin || role.includes('ALMACEN');
+  const canCxcByRole = isAdmin || role.includes('CTAS') || role.includes('COBRAR') || role.includes('CXC');
+
+  const canSales = (hasPermissionFlags && Boolean(permissionFlags.can_sales)) || canSalesByRole;
+  const canWarehouse = (hasPermissionFlags && Boolean(permissionFlags.can_warehouse)) || canWarehouseByRole;
+  const canCxc = (hasPermissionFlags && Boolean(permissionFlags.can_cxc)) || canCxcByRole;
   const availableModes: OrderMode[] = [];
 
   if (canSales) {
@@ -204,6 +202,12 @@ function AppNavigator() {
 
               navigation.navigate('Tabs');
             }}
+            onOpenDerivedOrder={(orderId) =>
+              navigation.navigate('PedidoDetalle', {
+                orderId,
+                mode: 'sales',
+              })
+            }
           />
         )}
       />
