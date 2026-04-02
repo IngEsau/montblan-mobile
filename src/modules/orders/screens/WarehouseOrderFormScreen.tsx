@@ -35,6 +35,18 @@ type DraftWarehouseLine = {
   rolloInput: string;
 };
 
+function normalizeIntegerInput(value: string) {
+  return value.replace(/[^\d]/g, '');
+}
+
+function normalizeWholeNumberValue(value: number | null | undefined) {
+  if (value === null || typeof value === 'undefined' || Number.isNaN(Number(value))) {
+    return '0';
+  }
+
+  return String(Math.max(0, Math.round(Number(value))));
+}
+
 function buildLine(line: PedidoDetalleLinea): DraftWarehouseLine {
   return {
     id: line.id,
@@ -45,8 +57,8 @@ function buildLine(line: PedidoDetalleLinea): DraftWarehouseLine {
     importeOriginal: Number(line.importe || 0),
     inventarioDisponible: line.inventario_disponible,
     largo: line.largo ?? null,
-    surtidoInput: String(line.surtido ?? 0),
-    rolloInput: String(line.rollo ?? 0),
+    surtidoInput: normalizeWholeNumberValue(line.surtido),
+    rolloInput: normalizeWholeNumberValue(line.rollo),
   };
 }
 
@@ -120,8 +132,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
   const parsedLines = useMemo(
     () =>
       lines.map((line) => {
-        const surtido = Number(line.surtidoInput);
-        const rollo = Number(line.rolloInput);
+        const surtido = line.surtidoInput.trim() === '' ? NaN : Number.parseInt(line.surtidoInput, 10);
+        const rollo = line.rolloInput.trim() === '' ? NaN : Number.parseInt(line.rolloInput, 10);
         const surtidoNormalizado = Number.isFinite(surtido) ? surtido : NaN;
         const faltante = Math.max(line.cantidad - (Number.isFinite(surtidoNormalizado) ? surtidoNormalizado : 0), 0);
         const sugerenciaSurtido =
@@ -187,7 +199,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         line.id === lineId
           ? {
               ...line,
-              [field]: value.replace(',', '.'),
+              [field]: normalizeIntegerInput(value),
             }
           : line,
       ),
@@ -236,8 +248,8 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       const payload = {
         detalle: parsedLines.map((line) => ({
           id: line.id,
-          surtido: Number(line.surtido.toFixed(4)),
-          rollo: Number(line.rollo.toFixed(4)),
+          surtido: Math.round(line.surtido),
+          rollo: Math.round(line.rollo),
         })),
         comentario_almacen: comentarioAlmacen.trim() || undefined,
       };
@@ -367,6 +379,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
               Si el cliente quiere adelantar el pedido, almacén puede actualizar esta fecha sin abrir la edición completa.
             </Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={fechaEntregaInput}
               onChangeText={setFechaEntregaInput}
               placeholder="YYYY-MM-DD"
@@ -392,6 +405,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           Este comentario solo puede editarse desde almacén y viaja con la actualización de captura o de fecha.
         </Text>
         <TextInput
+              placeholderTextColor={palette.mutedText}
           value={comentarioAlmacen}
           onChangeText={setComentarioAlmacen}
           placeholder="Agrega un comentario operativo para almacén"
@@ -407,10 +421,11 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           <Text style={styles.lineCode}>{line.codigo}</Text>
           <Text style={styles.lineDesc}>{line.descripcion || 'Sin descripción'}</Text>
           <Text style={styles.metaRow}>
-            Cantidad solicitada: {line.cantidad} | Inventario: {line.inventarioDisponible ?? '-'}
+            <Text style={styles.requestedLabel}>Cantidad solicitada: {line.cantidad}</Text>
+            <Text>{' | '}Inventario: {line.inventarioDisponible ?? '-'}</Text>
           </Text>
           <Text style={[styles.metaRow, line.inventarioExcedido ? styles.inventoryFeedbackDanger : styles.inventoryFeedbackOk]}>
-            Stock actual: {line.inventarioDisponible ?? '-'} | Surtido: {Number.isFinite(line.surtido) ? line.surtido.toFixed(2) : '-'} | Stock después: {line.stockDespues !== null ? line.stockDespues.toFixed(2) : '-'}
+            Stock actual: {line.inventarioDisponible ?? '-'} | Surtido: {Number.isFinite(line.surtido) ? normalizeWholeNumberValue(line.surtido) : '-'} | Stock después: {line.stockDespues !== null ? normalizeWholeNumberValue(line.stockDespues) : '-'}
           </Text>
           <Text style={styles.metaRow}>Precio: {formatMoney(line.precio)} | Importe actual: {formatMoney(line.importeCalculado)}</Text>
 
@@ -418,24 +433,26 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
             <View style={styles.inputWrap}>
               <Text style={styles.inputLabel}>Surtido</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={line.surtidoInput}
                 onChangeText={(value) => updateLineInput(line.id, 'surtidoInput', value)}
-                keyboardType="decimal-pad"
+                keyboardType="number-pad"
                 style={styles.input}
               />
             </View>
             <View style={styles.inputWrap}>
               <Text style={styles.inputLabel}>Rollos</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={line.rolloInput}
                 onChangeText={(value) => updateLineInput(line.id, 'rolloInput', value)}
-                keyboardType="decimal-pad"
+                keyboardType="number-pad"
                 style={styles.input}
               />
             </View>
             <View style={styles.faltanteWrap}>
               <Text style={styles.inputLabel}>Faltante</Text>
-              <Text style={styles.faltanteValue}>{line.faltante.toFixed(2)}</Text>
+              <Text style={styles.faltanteValue}>{normalizeWholeNumberValue(line.faltante)}</Text>
             </View>
           </View>
           {line.sugerenciaSurtido !== null ? (
@@ -445,7 +462,7 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
           ) : null}
           {line.extraCantidad > 0 ? (
             <Text style={styles.extraInfo}>
-              Extra surtido: +{line.extraCantidad.toFixed(2)} | Incremento: +{formatMoney(line.extraMonto)}
+              Extra surtido: +{normalizeWholeNumberValue(line.extraCantidad)} | Incremento: +{formatMoney(line.extraMonto)}
             </Text>
           ) : null}
           {line.inventarioExcedido ? (
@@ -457,9 +474,9 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
       ))}
 
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryLine}>Total surtido: {totalSurtido.toFixed(2)}</Text>
-        <Text style={styles.summaryLine}>Total rollos: {totalRollos.toFixed(2)}</Text>
-        <Text style={styles.summaryLine}>Total faltante: {totalFaltante.toFixed(2)}</Text>
+        <Text style={styles.summaryLine}>Total surtido: {normalizeWholeNumberValue(totalSurtido)}</Text>
+        <Text style={styles.summaryLine}>Total rollos: {normalizeWholeNumberValue(totalRollos)}</Text>
+        <Text style={styles.summaryLine}>Total faltante: {normalizeWholeNumberValue(totalFaltante)}</Text>
         <Text style={styles.summaryStatus}>
           Estado sugerido: {allComplete ? 'COMPLETO' : 'STANDBY (PARCIAL)'} | Estado actual:{' '}
           {order.almacen_status || '-'}
@@ -601,6 +618,10 @@ const styles = StyleSheet.create({
     fontFamily: typography.regular,
     fontSize: 12,
     marginBottom: 6,
+  },
+  requestedLabel: {
+    color: palette.primaryDark,
+    fontFamily: typography.bold,
   },
   inputRow: {
     flexDirection: 'row',

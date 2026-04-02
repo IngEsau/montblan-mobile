@@ -54,6 +54,7 @@ function formatBytes(bytes?: number | null) {
 
 const CLIENTE_TEMPORAL_MIN = 3000;
 const CLIENTE_TEMPORAL_MAX = 3999;
+const FALLBACK_EVIDENCE_MAX_BYTES = 2 * 1024 * 1024;
 
 function isTemporaryClientCode(value?: string | null) {
   const normalized = (value || '').trim();
@@ -74,7 +75,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [noClienteInput, setNoClienteInput] = useState('');
   const [clienteRazonSocialManual, setClienteRazonSocialManual] = useState('');
   const [clienteTelefonoManual, setClienteTelefonoManual] = useState('');
-  const [manualVendedor, setManualVendedor] = useState('');
   const [clienteModalOpen, setClienteModalOpen] = useState(false);
   const [productoModalOpen, setProductoModalOpen] = useState(false);
   const [clienteSearch, setClienteSearch] = useState('');
@@ -102,11 +102,10 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
   const [tipoComprobante, setTipoComprobante] = useState<10 | 20>(10);
   const [postfechado, setPostfechado] = useState(false);
   const [fechaEntrega, setFechaEntrega] = useState('');
-  const [showOptionalFields, setShowOptionalFields] = useState(false);
   const [showAllLines, setShowAllLines] = useState(false);
   const [existingEvidence, setExistingEvidence] = useState<PedidoEvidenciaItem[]>([]);
   const [pendingEvidence, setPendingEvidence] = useState<PedidoAdjuntoUploadAsset[]>([]);
-  const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(null);
+  const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(FALLBACK_EVIDENCE_MAX_BYTES);
   const [canViewEvidence, setCanViewEvidence] = useState(true);
   const [canManageEvidence, setCanManageEvidence] = useState(true);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
@@ -116,20 +115,10 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
   const applyClienteSelection = useCallback(
     (cliente: Cliente, options?: { preserveManualFields?: boolean }) => {
-      const preserveManualFields = options?.preserveManualFields === true;
-      const suggestedSeller = (cliente.asignado_a_nombre || cliente.asignado_a_username || '').trim();
-
       setSelectedCliente(cliente);
       setNoClienteInput(cliente.clave || '');
       setClienteRazonSocialManual(cliente.nombre_comercial || cliente.nombre || '');
       setClienteTelefonoManual(cliente.telefono || '');
-      setManualVendedor((prev) => {
-        if (preserveManualFields || prev.trim()) {
-          return prev;
-        }
-
-        return suggestedSeller;
-      });
       // La ubicación ya no se captura para clientes de catálogo.
       setCodigoPostal('');
       setCodigoPostalRows([]);
@@ -139,13 +128,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       setNumInt('');
       setNumExt('');
       setReferenciaDireccion('');
-
-      if (!preserveManualFields) {
-        setClienteCondiciones('');
-        setClienteCorreo('');
-        setClienteRfc('');
-        setUsoCfdi('');
-      }
+      setClienteCorreo('');
+      setClienteRfc('');
+      setUsoCfdi('');
     },
     [],
   );
@@ -193,7 +178,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setNoClienteInput(item.no_cliente || '');
         setClienteRazonSocialManual(item.cliente_razon_social || '');
         setClienteTelefonoManual(item.cliente_telefono || '');
-        setManualVendedor(item.vendedor || '');
         setTipoComprobante(item.tipo_fac_rem === 20 ? 20 : 10);
         setPostfechado(Boolean(item.postfechado));
         setFechaEntrega(item.postfechado ? item.fecha_entrega || '' : '');
@@ -214,7 +198,6 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         setObservaciones(item.observaciones || '');
         setInstruccionesCredito(item.instrucciones_credito || '');
         setInstruccionesAlmacen(item.instrucciones_almacen || '');
-        setShowOptionalFields(Boolean(item.cliente_correo || item.cliente_rfc || item.uso_cfdi));
         setCodigoPostal(item.direccion?.codigo_postal || '');
         setDireccion(item.direccion?.direccion || '');
         setNumInt(item.direccion?.num_int || '');
@@ -237,7 +220,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         if (isTemporaryClientCode(item.no_cliente || '')) {
           setSelectedCliente(null);
         } else if (selectedFromCatalog) {
-          applyClienteSelection(selectedFromCatalog, { preserveManualFields: true });
+          applyClienteSelection(selectedFromCatalog);
           if (!item.direccion?.direccion) {
             setDireccion((selectedFromCatalog.calle || '').trim());
           }
@@ -276,7 +259,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       }
       if (!pedidoResponse?.item) {
         setExistingEvidence([]);
-        setMaxUploadBytes(null);
+        setMaxUploadBytes(FALLBACK_EVIDENCE_MAX_BYTES);
         const canSales = Boolean(user?.permissions?.can_sales);
         setCanViewEvidence(canSales);
         setCanManageEvidence(canSales);
@@ -558,28 +541,15 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     );
   };
 
-  const vendedorResolvido = useMemo(() => {
-    const vendedorManual = manualVendedor.trim();
-    if (vendedorManual) {
-      return vendedorManual;
-    }
+  const vendedorAsignado = useMemo(() => {
+    const nombreCompleto = [user?.nombre, user?.apellidos]
+      .map((value) => (value || '').trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
-    const assignedName = selectedCliente?.asignado_a_nombre?.trim();
-    if (assignedName) {
-      return assignedName;
-    }
-
-    const assignedUsername = selectedCliente?.asignado_a_username?.trim();
-    if (assignedUsername) {
-      return assignedUsername;
-    }
-
-    if (isEditMode) {
-      return '';
-    }
-
-    return user?.username || 'movil';
-  }, [isEditMode, manualVendedor, selectedCliente?.asignado_a_nombre, selectedCliente?.asignado_a_username, user?.username]);
+    return nombreCompleto || user?.username || 'movil';
+  }, [user?.apellidos, user?.nombre, user?.username]);
 
   const linesWithAvailability = useMemo(
     () =>
@@ -630,6 +600,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       }
 
       const rejected: string[] = [];
+      const effectiveLimit = maxUploadBytes || FALLBACK_EVIDENCE_MAX_BYTES;
       const picked = result.assets
         .map((asset, index) => ({
           uri: asset.uri,
@@ -639,8 +610,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           file: Platform.OS === 'web' && asset.file instanceof File ? asset.file : undefined,
         }))
         .filter((asset) => {
-          if (maxUploadBytes && typeof asset.size === 'number' && asset.size > maxUploadBytes) {
-            rejected.push(`El archivo ${asset.name} excede el límite máximo de ${formatBytes(maxUploadBytes)}.`);
+          if (typeof asset.size === 'number' && asset.size > effectiveLimit) {
+            rejected.push(`El archivo ${asset.name} excede el límite máximo de ${formatBytes(effectiveLimit)}.`);
             return false;
           }
 
@@ -810,9 +781,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           no_cliente: noClientePayload,
           cliente_razon_social: razonSocialPayload,
           cliente_telefono: telefonoPayload,
-          cliente_correo: clienteCorreo.trim() || undefined,
-          cliente_rfc: clienteRfc.trim() || undefined,
-          uso_cfdi: usoCfdi.trim() || undefined,
+          cliente_correo: isTemporaryClient ? clienteCorreo.trim() || undefined : undefined,
+          cliente_rfc: isTemporaryClient ? clienteRfc.trim() || undefined : undefined,
+          uso_cfdi: isTemporaryClient ? usoCfdi.trim() || undefined : undefined,
           cliente_condiciones: clienteCondiciones.trim() || undefined,
           tipo_fac_rem: tipoComprobante,
           postfechado: postfechado ? 1 : 0,
@@ -820,7 +791,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           observaciones,
           instrucciones_credito: instruccionesCredito.trim() || undefined,
           instrucciones_almacen: instruccionesAlmacen.trim() || undefined,
-          vendedor: vendedorResolvido || undefined,
+          vendedor: !isEditMode ? vendedorAsignado : undefined,
         },
         detalle: lines.map((line) => {
           const qty = Number(line.cantidad);
@@ -919,6 +890,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         <Text style={styles.sectionTitle}>Datos principales</Text>
         <Text style={styles.label}>No. cliente</Text>
         <TextInput
+              placeholderTextColor={palette.mutedText}
           value={noClienteInput}
           onChangeText={(value) => setNoClienteInput(value.replace(/\D/g, '').slice(0, 20))}
           placeholder="Ej. 01931 o 3001"
@@ -952,6 +924,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <>
             <Text style={styles.label}>Razón social</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={clienteRazonSocialManual}
               onChangeText={setClienteRazonSocialManual}
               placeholder="Nombre del cliente temporal"
@@ -960,11 +933,42 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
             <Text style={styles.label}>Teléfono</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={clienteTelefonoManual}
               onChangeText={setClienteTelefonoManual}
               placeholder="Teléfono del cliente temporal"
               style={styles.input}
               keyboardType="phone-pad"
+            />
+
+            <Text style={styles.label}>Correo</Text>
+            <TextInput
+              placeholderTextColor={palette.mutedText}
+              value={clienteCorreo}
+              onChangeText={setClienteCorreo}
+              placeholder="correo@dominio.com"
+              style={styles.input}
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.label}>RFC</Text>
+            <TextInput
+              placeholderTextColor={palette.mutedText}
+              value={clienteRfc}
+              onChangeText={setClienteRfc}
+              placeholder="XAXX010101000"
+              style={styles.input}
+              autoCapitalize="characters"
+            />
+
+            <Text style={styles.label}>Uso CFDI</Text>
+            <TextInput
+              placeholderTextColor={palette.mutedText}
+              value={usoCfdi}
+              onChangeText={setUsoCfdi}
+              placeholder="Ej. G03"
+              style={styles.input}
+              autoCapitalize="characters"
             />
           </>
         ) : null}
@@ -1010,13 +1014,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           </Pressable>
         </View>
         <Text style={styles.helper}>
-          Solo los pedidos postfechados capturan fecha de entrega. Los pedidos normales ya no usan ese dato.
+          Solo los pedidos postfechados capturan fecha de entrega. Los pedidos normales no usan ese dato.
         </Text>
 
         {postfechado ? (
           <>
             <Text style={styles.label}>Fecha de entrega</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={fechaEntrega}
               onChangeText={setFechaEntrega}
               placeholder="YYYY-MM-DD"
@@ -1028,64 +1033,12 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
         <Text style={styles.label}>Condiciones</Text>
         <TextInput
+              placeholderTextColor={palette.mutedText}
           value={clienteCondiciones}
           onChangeText={setClienteCondiciones}
           placeholder="Ej. Crédito 15 días / Contado"
           style={styles.input}
         />
-
-        <Text style={styles.label}>Vendedor</Text>
-        <TextInput
-          value={manualVendedor}
-          onChangeText={setManualVendedor}
-          placeholder="Captura el vendedor"
-          style={styles.input}
-        />
-        <Text style={styles.helper}>
-          {selectedCliente?.asignado_a_id
-            ? 'Campo libre. Si lo dejas vacío, se usará como sugerencia el vendedor del cliente o el usuario actual.'
-            : 'Campo libre. Si lo dejas vacío, se usará el usuario actual.'}
-        </Text>
-        <Pressable style={styles.inlineToggleButton} onPress={() => setShowOptionalFields((prev) => !prev)}>
-          <Text style={styles.inlineToggleLabel}>
-            {showOptionalFields ? 'Ocultar datos fiscales' : 'Ver datos fiscales'}
-          </Text>
-        </Pressable>
-
-        {showOptionalFields ? (
-          <>
-            <View style={styles.lineRow}>
-              <View style={styles.lineInputWrap}>
-                <Text style={styles.label}>Correo cliente</Text>
-                <TextInput
-                  value={clienteCorreo}
-                  onChangeText={setClienteCorreo}
-                  placeholder="correo@dominio.com"
-                  style={styles.input}
-                  autoCapitalize="none"
-                />
-              </View>
-              <View style={styles.lineInputWrap}>
-                <Text style={styles.label}>Uso CFDI</Text>
-                <TextInput
-                  value={usoCfdi}
-                  onChangeText={setUsoCfdi}
-                  placeholder="Ej. G03"
-                  style={styles.input}
-                  autoCapitalize="characters"
-                />
-              </View>
-            </View>
-            <Text style={styles.label}>RFC cliente</Text>
-            <TextInput
-              value={clienteRfc}
-              onChangeText={setClienteRfc}
-              placeholder="XAXX010101000"
-              style={styles.input}
-              autoCapitalize="characters"
-            />
-          </>
-        ) : null}
       </View>
 
       {isTemporaryClient ? (
@@ -1095,6 +1048,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             <View style={styles.lineInputWrap}>
               <Text style={styles.label}>C.P.</Text>
               <TextInput
+              placeholderTextColor={palette.mutedText}
                 value={codigoPostal}
                 onChangeText={handleCodigoPostalChange}
                 onBlur={handleCodigoPostalBlur}
@@ -1148,6 +1102,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
           <Text style={styles.label}>Dirección</Text>
           <TextInput
+              placeholderTextColor={palette.mutedText}
             value={direccion}
             onChangeText={setDireccion}
             placeholder="Calle y número"
@@ -1157,16 +1112,17 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <View style={styles.lineRow}>
             <View style={styles.lineInputWrap}>
               <Text style={styles.label}>No int</Text>
-              <TextInput value={numInt} onChangeText={setNumInt} placeholder="Ej. 12" style={styles.input} />
+              <TextInput placeholderTextColor={palette.mutedText} value={numInt} onChangeText={setNumInt} placeholder="Ej. 12" style={styles.input} />
             </View>
             <View style={styles.lineInputWrap}>
               <Text style={styles.label}>No ext</Text>
-              <TextInput value={numExt} onChangeText={setNumExt} placeholder="Ej. A" style={styles.input} />
+              <TextInput placeholderTextColor={palette.mutedText} value={numExt} onChangeText={setNumExt} placeholder="Ej. A" style={styles.input} />
             </View>
           </View>
 
           <Text style={styles.label}>Referencia dirección</Text>
           <TextInput
+              placeholderTextColor={palette.mutedText}
             value={referenciaDireccion}
             onChangeText={setReferenciaDireccion}
             placeholder="Entre calles, puntos de referencia, etc."
@@ -1180,6 +1136,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         <Text style={styles.sectionTitle}>Indicaciones</Text>
         <Text style={styles.label}>Observaciones</Text>
         <TextInput
+              placeholderTextColor={palette.mutedText}
           value={observaciones}
           onChangeText={setObservaciones}
           placeholder="Notas del pedido"
@@ -1191,6 +1148,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <View style={styles.lineInputWrap}>
             <Text style={styles.label}>Instrucciones para Crédito</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={instruccionesCredito}
               onChangeText={setInstruccionesCredito}
               placeholder="Ej. no facturar arriba de cierto monto"
@@ -1201,6 +1159,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <View style={styles.lineInputWrap}>
             <Text style={styles.label}>Instrucciones para Almacén</Text>
             <TextInput
+              placeholderTextColor={palette.mutedText}
               value={instruccionesAlmacen}
               onChangeText={setInstruccionesAlmacen}
               placeholder="Ej. material con corte / cliente foráneo"
@@ -1229,7 +1188,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           <Text style={styles.helper}>
             Puedes cargar JPG, PNG o PDF.
             {maxUploadBytes ? ` Tamaño máximo por archivo: ${formatBytes(maxUploadBytes)}.` : ''}
-            {' '}La evidencia se conserva por tiempo limitado en servidor.
+            {' '}La evidencia queda disponible para el vendedor que capturó el pedido y para CXC.
           </Text>
 
           {pendingEvidence.length > 0 ? (
@@ -1331,6 +1290,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               <View style={styles.lineInputWrap}>
                 <Text style={styles.lineLabel}>Cantidad</Text>
                 <TextInput
+              placeholderTextColor={palette.mutedText}
                   value={line.cantidad}
                   onChangeText={(value) => updateLine(line.id, 'cantidad', value)}
                   keyboardType="number-pad"
@@ -1340,6 +1300,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               <View style={styles.lineInputWrap}>
                 <Text style={styles.lineLabel}>Precio</Text>
                 <TextInput
+              placeholderTextColor={palette.mutedText}
                   value={String(line.precio)}
                   onChangeText={(value) => updateLine(line.id, 'precio', value.replace(',', '.'))}
                   keyboardType="decimal-pad"
@@ -1380,6 +1341,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Selecciona un cliente</Text>
           <TextInput
+              placeholderTextColor={palette.mutedText}
             value={clienteSearch}
             onChangeText={setClienteSearch}
             style={styles.input}
@@ -1412,6 +1374,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
         <View style={styles.modalContainer}>
           <Text style={styles.modalTitle}>Selecciona un producto</Text>
           <TextInput
+              placeholderTextColor={palette.mutedText}
             value={productoSearch}
             onChangeText={setProductoSearch}
             style={styles.input}
