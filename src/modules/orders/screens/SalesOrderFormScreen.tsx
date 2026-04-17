@@ -1292,7 +1292,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
             <Text style={styles.lineName}>{line.nombre}</Text>
             <Text style={[styles.inventorySummary, line.disponibilidadInsuficiente && styles.inventoryWarning]}>
-              Inv. disponible: {line.inventarioDisponible ?? 0} | SA: {line.inventarioSa ?? 0} | CMB: {line.inventarioCmb ?? 0}
+              Inv. disponible: {line.inventarioDisponible ?? 0} | SA: {line.inventarioSa ?? 0} | Fisico: {line.inventarioCmb ?? 0}
             </Text>
             <View style={styles.lineRow}>
               <View style={styles.lineInputWrap}>
@@ -1395,7 +1395,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
                 <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
                 <Text style={styles.modalItemPrice}>{formatMoney(resolveProductoPrice(producto))}</Text>
                 <Text style={styles.modalItemMeta}>
-                  Inv. disponible: {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante)} | SA: {producto.inventario_sa ?? 0} | CMB: {producto.inventario_cmb ?? 0}
+                  Inv. disponible: {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante)} | SA: {producto.inventario_sa ?? 0} | Fisico: {producto.inventario_cmb ?? 0}
                 </Text>
                 {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante) <= 0 ? (
                   <Text style={styles.inventoryWarning}>
