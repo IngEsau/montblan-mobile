@@ -1039,6 +1039,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           placeholder="Ej. Crédito 15 días / Contado"
           style={styles.input}
         />
+
+        <Text style={styles.label}>Vendedor</Text>
+        <View style={styles.staticReferenceBox}>
+          <Text style={styles.staticReferenceText}>{vendedorAsignado}</Text>
+        </View>
+        <Text style={styles.helper}>
+          Se vincula automáticamente con tu sesión actual y se guarda como referencia del pedido.
+        </Text>
       </View>
 
       {isTemporaryClient ? (
@@ -1512,6 +1520,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 0,
     marginBottom: 10,
+  },
+  staticReferenceBox: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#f7f9fb',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 8,
+  },
+  staticReferenceText: {
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
   },
   input: {
     borderWidth: 1,
