@@ -165,6 +165,11 @@ export function OrdersListScreen({
     [salesTotal],
   );
 
+  const salesTotalTitle = useMemo(
+    () => (mode === 'sales' ? 'Total de ventas global' : 'Sumatoria global'),
+    [mode],
+  );
+
   const modeButtons = useMemo(
     () =>
       resolvedModes.map((key) => ({
@@ -247,13 +252,11 @@ export function OrdersListScreen({
         ) : null}
       </View>
 
-      {mode === 'sales' ? (
-        <View style={styles.kpiCard}>
-          <Text style={styles.kpiLabel}>Total de ventas global</Text>
-          <Text style={styles.kpiValue}>{salesTotalLabel}</Text>
-          <Text style={styles.kpiHint}>Se recalcula con los filtros activos de esta vista.</Text>
-        </View>
-      ) : null}
+      <View style={styles.kpiCard}>
+        <Text style={styles.kpiLabel}>{salesTotalTitle}</Text>
+        <Text style={styles.kpiValue}>{salesTotalLabel}</Text>
+        <Text style={styles.kpiHint}>Se recalcula con los filtros activos de esta vista.</Text>
+      </View>
 
       {mode === 'warehouse' ? (
         <View style={styles.stageRow}>
