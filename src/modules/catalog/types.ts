@@ -4,6 +4,7 @@ export type PaginatedResponse<T> = {
     per_page: number;
     total: number;
     page_count: number;
+    sales_total?: number;
   };
   items: T[];
 };

@@ -56,6 +56,7 @@ export function OrdersListScreen({
   );
   const [mode, setMode] = useState<OrderMode>(resolvedInitialMode);
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
+  const [salesTotal, setSalesTotal] = useState(0);
   const [search, setSearch] = useState('');
   const resolvedInitialWarehouseStage = useMemo<WarehouseStage>(
     () => initialWarehouseStage || 'all',
@@ -154,6 +155,16 @@ export function OrdersListScreen({
     [mode],
   );
 
+  const salesTotalLabel = useMemo(
+    () =>
+      new Intl.NumberFormat('es-MX', {
+        style: 'currency',
+        currency: 'MXN',
+        minimumFractionDigits: 2,
+      }).format(Number(salesTotal || 0)),
+    [salesTotal],
+  );
+
   const modeButtons = useMemo(
     () =>
       resolvedModes.map((key) => ({
@@ -182,8 +193,10 @@ export function OrdersListScreen({
         });
         const visibleItems = response.items.filter((item) => VISIBLE_STATUSES.includes(item.status));
         setOrders(visibleItems);
+        setSalesTotal(Number(response.meta?.sales_total || 0));
         setErrorMessage(null);
       } catch (error) {
+        setSalesTotal(0);
         if (error instanceof ApiError) {
           setErrorMessage(error.message);
         } else {
@@ -233,6 +246,14 @@ export function OrdersListScreen({
           </Pressable>
         ) : null}
       </View>
+
+      {mode === 'sales' ? (
+        <View style={styles.kpiCard}>
+          <Text style={styles.kpiLabel}>Total de ventas global</Text>
+          <Text style={styles.kpiValue}>{salesTotalLabel}</Text>
+          <Text style={styles.kpiHint}>Se recalcula con los filtros activos de esta vista.</Text>
+        </View>
+      ) : null}
 
       {mode === 'warehouse' ? (
         <View style={styles.stageRow}>
@@ -478,6 +499,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: typography.semiBold,
     fontSize: 13,
+  },
+  kpiCard: {
+    backgroundColor: '#f4fbf9',
+    borderWidth: 1,
+    borderColor: '#d6ece5',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  kpiLabel: {
+    color: '#6a7a89',
+    fontFamily: typography.semiBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  kpiValue: {
+    color: palette.primaryDark,
+    fontFamily: typography.bold,
+    fontSize: 24,
+    marginTop: 4,
+  },
+  kpiHint: {
+    color: '#7b8b97',
+    fontFamily: typography.regular,
+    fontSize: 12,
+    marginTop: 4,
   },
   stageRow: {
     flexDirection: 'row',
