@@ -53,7 +53,7 @@ Perfiles EAS definidos en [`eas.json`](eas.json):
 La app toma la URL base del backend desde:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=
+EXPO_PUBLIC_API_BASE_URL
 ```
 
 Condiciones esperadas:
