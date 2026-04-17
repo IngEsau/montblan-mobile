@@ -1,76 +1,84 @@
 # Montblan Mobile
 
-Aplicación móvil oficial para la operación del flujo de pedidos Montblan, integrada al backend Yii2 mediante API REST.
+Aplicación móvil oficial de Montblan para la operación del flujo de pedidos, consulta de catálogos y ejecución de tareas de ventas, almacén y CXC contra el backend Yii2 mediante API REST.
 
-## Overview
+## Alcance funcional
 
-La app está diseñada para acompañar la operación diaria de ventas, almacén y CXC desde un flujo móvil consistente con el backend y las reglas actuales del negocio.
+La app cubre los flujos operativos vigentes del sistema:
 
-Flujo vigente:
-- `CAPTURA`
-- `AUTORIZACION`
-- `ALMACEN`
-- `FACTURACION`
-- `TERMINADO`
-
-Capacidades principales:
-- autenticación con token Bearer
+- autenticación por token Bearer
+- captura y edición de pedidos en `CAPTURA`
+- operación de autorización y facturación en `CXC`
+- captura de surtido y rollos en `ALMACEN`
 - consulta de clientes y productos
-- captura y edición de pedidos en ventas
-- autorización CXC con asignación de `No. pedido`
-- captura de surtido y rollos en almacén
-- operación de documento final en facturación
-- cancelación documental con trazabilidad y reversa de inventario
 - soporte para pedidos postfechados
+- soporte para evidencia de pedido
+- soporte para pedidos de Mercado Libre y pedidos derivados
+- cálculo de inventario proyectado y total global de ventas en listados móviles
 
 ## Stack
 
-- Expo 55
-- React Native 0.83
-- React 19
-- TypeScript
-- React Navigation
+- Expo `~55.0.6`
+- React Native `0.83.2`
+- React `19.2.0`
+- TypeScript `~5.9.2`
+- React Navigation 7
 - AsyncStorage para sesión local
+- Expo Document Picker / File System / Sharing para adjuntos y archivos
 
-## Requisitos
+## Configuración de la app
 
-- Node.js 20 o superior
-- npm 10 o superior
-- backend Montblan accesible por red
-- credenciales de Expo/EAS si se generarán builds Android
+Metadatos relevantes definidos en [`app.json`](app.json):
 
-## Configuración de entorno
+- nombre: `Montblan`
+- slug: `montblan-mobile`
+- versión: `1.2.0`
+- Android `versionCode`: `3`
+- package Android: `com.lerco.montblan`
 
-La app toma la URL base del backend desde la variable:
+Perfiles EAS definidos en [`eas.json`](eas.json):
+
+- `preview`: build interna Android en formato `apk`
+- `production`: build Android en formato `app-bundle`
+
+## Requisitos de desarrollo
+
+- Node.js `20+`
+- npm `10+`
+- acceso de red al backend Montblan
+- credenciales de Expo/EAS para builds Android
+
+## Variable de entorno requerida
+
+La app toma la URL base del backend desde:
 
 ```env
 EXPO_PUBLIC_API_BASE_URL=
 ```
 
-Buenas prácticas:
-- no versionar archivos `.env` reales
-- mantener solo `.env.example` como plantilla
-- usar una URL sin slash final
-- resolver la URL final por entorno fuera del repositorio
+Condiciones esperadas:
 
-### Entorno local
+- la URL debe apuntar al backend Montblan accesible para el dispositivo o emulador
+- la URL no debe incluir slash final
+- el backend debe exponer la API REST v1 y aceptar autenticación Bearer
 
-1. Crea tu archivo `.env` a partir de `.env.example`.
-2. Define `EXPO_PUBLIC_API_BASE_URL` con la URL del backend correspondiente al entorno donde vas a trabajar.
-3. No subas archivos `.env` reales al repositorio.
+## Instalación y ejecución local
 
-## Desarrollo local
-
-Instalación:
+Instalar dependencias:
 
 ```bash
 npm install
 ```
 
-Scripts disponibles:
+Levantar entorno de desarrollo:
 
 ```bash
 npm run start
+```
+
+Comandos disponibles:
+
+```bash
 npm run android
 npm run ios
 npm run web
@@ -82,83 +90,82 @@ Validación de tipos:
 npx tsc --noEmit
 ```
 
-## Build Android
+## Build Android con EAS
 
-La app incluye configuración para EAS Build.
-
-Build interno en formato APK:
+Build interna en APK:
 
 ```bash
 npx eas build -p android --profile preview
 ```
 
-Build orientado a distribución:
+Build de distribución en AAB:
 
 ```bash
 npx eas build -p android --profile production
 ```
 
-Identificador Android configurado:
-- `com.lerco.montblan`
-
-### Variables para build
-
-Los builds no incluyen URLs hardcodeadas dentro del repositorio.
-
-Antes de ejecutar un build, define `EXPO_PUBLIC_API_BASE_URL` en alguno de estos puntos:
-- variables de entorno locales de la sesión
-- configuración segura del proveedor de CI/CD
-- variables de entorno administradas en Expo/EAS
-
-Ejemplo local:
+Si el build se ejecuta localmente con variables de entorno de sesión:
 
 ```bash
-export EXPO_PUBLIC_API_BASE_URL=<backend-url-without-trailing-slash>
+export EXPO_PUBLIC_API_BASE_URL=<backend-url-sin-slash-final>
 npx eas build -p android --profile preview
 ```
-
-## Integración con backend
-
-La app consume los endpoints principales de autenticación, catálogos y pedidos.
-
-Operaciones relevantes:
-- login y recuperación de perfil autenticado
-- listado y detalle de pedidos
-- creación y actualización de pedidos en captura
-- transición entre fases del flujo
-- operación de almacén
-- operación CXC en autorización y facturación
-- cancelación documental
-
-## Reglas operativas relevantes
-
-- ventas captura el pedido y puede editarlo mientras siga en `CAPTURA`
-- `No. pedido` se asigna en `AUTORIZACION`
-- `FACTURACION` opera con la variante facturada del pedido
-- los pedidos postfechados se bloquean en almacén hasta 24 horas antes de `fecha_entrega`
-- la afectación de inventario ocurre al pasar a `TERMINADO`
-- la cancelación del documento final no reabre el flujo y revierte inventario
-- la visibilidad de pedidos respeta el rol y, en ventas, el vendedor asignado
 
 ## Estructura del proyecto
 
 ```text
 src/
-  navigation/          # rutas y tabs principales
+  navigation/          navegación principal y tabs
   modules/
-    auth/              # login y contexto de sesión
-    catalog/           # clientes y productos
-    orders/            # flujo operativo de pedidos
+    auth/              autenticación y sesión
+    catalog/           clientes y productos
+    orders/            flujo operativo de pedidos
   shared/
-    api/               # cliente HTTP
-    config/            # lectura de entorno
-    storage/           # token y sesión local
-    theme/             # paleta, tipografía y estilos base
+    api/               cliente HTTP y utilidades de red
+    config/            lectura de variables de entorno
+    storage/           persistencia local de sesión/token
+    theme/             tokens visuales y estilos compartidos
 ```
 
-## Convenciones de mantenimiento
+## Integración con backend
 
-- mantener el flujo móvil alineado con la API publicada
-- evitar hardcodear credenciales o URLs reales dentro del repositorio
-- documentar cualquier cambio de contrato en paralelo con el backend
-- separar cambios de build, funcionalidad y UI en commits distintos cuando sea posible
+La app consume el backend Montblan por API REST y depende de los contratos activos del proyecto web.
+
+Capacidades integradas:
+
+- `POST /auth/login`
+- `GET /auth/me`
+- listado, detalle, creación y actualización de pedidos
+- transición de fases del flujo
+- operación de almacén
+- operación CXC en autorización y facturación
+- consulta de clientes por clave
+- consulta paginada de productos
+- carga y lectura de evidencia
+
+## Reglas operativas visibles en mobile
+
+- ventas trabaja sobre pedidos en `CAPTURA`
+- el vendedor se asigna automáticamente desde la sesión actual
+- `No. pedido` se asigna en autorización por CXC
+- los pedidos postfechados se exponen con filtro propio en almacén
+- los pedidos de Mercado Libre muestran contexto específico y feedback de inventario proyectado
+- el listado de ventas muestra un KPI de total global para los filtros activos de la vista
+- la evidencia se refleja en las tarjetas de pedido con indicador visual de adjunto
+
+## Capturas de la app
+
+<table>
+  <tr>
+    <td><img src="docs/readme-assets/login.png" alt="Pantalla de login" width="220"></td>
+    <td><img src="docs/readme-assets/pedidos-ventas.png" alt="Listado de pedidos de ventas" width="220"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme-assets/alta-pedido-ventas.png" alt="Alta de pedido en ventas" width="220"></td>
+    <td><img src="docs/readme-assets/catalogo-productos.png" alt="Catálogo de productos" width="220"></td>
+  </tr>
+  <tr>
+    <td><img src="docs/readme-assets/almacen-postfechados.png" alt="Listado de almacén postfechados" width="220"></td>
+    <td><img src="docs/readme-assets/cxc-listado.png" alt="Listado de CXC" width="220"></td>
+  </tr>
+</table>
