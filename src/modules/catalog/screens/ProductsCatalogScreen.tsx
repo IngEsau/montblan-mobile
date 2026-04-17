@@ -115,7 +115,7 @@ export function ProductsCatalogScreen() {
 
               <Text style={styles.name}>{item.nombre || 'Sin nombre'}</Text>
               <Text style={styles.stock}>
-                Inventario SA: {item.inventario_sa ?? 0} | CMB: {item.inventario_cmb ?? 0}
+                SA: {item.inventario_sa ?? 0} | Fisico: {item.inventario_cmb ?? 0}
               </Text>
             </View>
           )}
