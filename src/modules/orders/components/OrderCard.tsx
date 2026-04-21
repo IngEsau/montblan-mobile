@@ -6,16 +6,18 @@ import { formatMoney, formatUnixDateTime } from '../../../shared/utils/formatter
 import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
 import { resolveOrderStatusLabel, resolveOrderStatusTone } from '../utils/status';
+import { OrderMode } from '../../../navigation/types';
 
 type OrderCardProps = {
   order: PedidoListItem;
+  mode: OrderMode;
   onPress: () => void;
   showEvidenceIndicator?: boolean;
 };
 
-export function OrderCard({ order, onPress, showEvidenceIndicator = false }: OrderCardProps) {
+export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false }: OrderCardProps) {
   const isFinished = order.status === 50;
-  const isCanceled = order.status === 1 || Boolean(order.documento_cancelado);
+  const isCanceled = Boolean(order.is_canceled_effective) || order.status === 1 || Boolean(order.documento_cancelado);
   const primaryStatusLabel = resolveOrderStatusLabel(order.status, order.status_label, order.is_standby);
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
@@ -23,6 +25,15 @@ export function OrderCard({ order, onPress, showEvidenceIndicator = false }: Ord
   const hasEvidence = Boolean(order.has_evidence);
   const inventoryFeedback = order.inventory_feedback ?? [];
   const visibleInventoryFeedback = inventoryFeedback.slice(0, 2);
+  const subtotal = mode === 'sales'
+    ? Number(order.subtotal_captura_signed ?? order.subtotal_signed ?? order.subtotal_captura ?? order.subtotal)
+    : Number(order.subtotal_signed ?? order.subtotal);
+  const iva = mode === 'sales'
+    ? Number(order.iva_captura_signed ?? order.iva_signed ?? order.iva_captura ?? order.iva)
+    : Number(order.iva_signed ?? order.iva);
+  const total = mode === 'sales'
+    ? Number(order.total_captura_signed ?? order.total_signed ?? order.total_captura ?? order.total)
+    : Number(order.total_signed ?? order.total);
 
   return (
     <Pressable style={[styles.card, isFinished && styles.cardFinished, isCanceled && styles.cardCanceled]} onPress={onPress}>
@@ -81,7 +92,11 @@ export function OrderCard({ order, onPress, showEvidenceIndicator = false }: Ord
       ) : null}
 
       <View style={styles.bottomRow}>
-        <Text style={styles.total}>{formatMoney(order.total)}</Text>
+        <View style={styles.totalsColumn}>
+          <Text style={styles.totalLine}>Subtotal: {formatMoney(subtotal)}</Text>
+          <Text style={styles.totalLine}>IVA: {formatMoney(iva)}</Text>
+          <Text style={styles.total}>Total: {formatMoney(total)}</Text>
+        </View>
         <Text style={styles.date}>{formatUnixDateTime(order.fecha)}</Text>
       </View>
     </Pressable>
@@ -203,12 +218,21 @@ const styles = StyleSheet.create({
     marginTop: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  totalsColumn: {
+    flex: 1,
   },
   total: {
     color: palette.primaryDark,
     fontFamily: typography.bold,
-    fontSize: 16,
+    fontSize: 15,
+  },
+  totalLine: {
+    color: palette.mutedText,
+    fontFamily: typography.medium,
+    fontSize: 12,
   },
   date: {
     color: palette.mutedText,

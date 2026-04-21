@@ -5,6 +5,13 @@ export type PaginatedResponse<T> = {
     total: number;
     page_count: number;
     sales_total?: number;
+    capture_sales_total?: number;
+    subtotal?: number;
+    iva?: number;
+    total_amount?: number;
+    capture_subtotal?: number;
+    capture_iva?: number;
+    capture_total?: number;
   };
   items: T[];
 };
@@ -27,10 +34,18 @@ export type Producto = {
   codigo: string;
   nombre: string | null;
   precio_venta: number;
+  precio_venta_especial?: number | null;
+  categoria?: string | null;
   largo?: number | null;
   inventario_sa: number | null;
   inventario_cmb: number | null;
+  inventario_fisico?: number | null;
+  cantidad_negativa_ml?: number | null;
+  inventario_sae?: number | null;
   inventario_disponible?: number | null;
+  minimo?: number | null;
+  maximo?: number | null;
+  updated_at?: number | null;
 };
 
 export type CodigoPostalEstado = {

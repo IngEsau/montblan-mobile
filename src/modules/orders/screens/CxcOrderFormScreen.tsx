@@ -182,6 +182,11 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     [order?.tipo_fac_rem],
   );
   const ventaEspecialAplicada = useMemo(() => Boolean(order?.venta_especial), [order?.venta_especial]);
+  const canApplySpecialPrice = useMemo(() => Boolean(order?.cliente_temporal), [order?.cliente_temporal]);
+  const shouldShowSpecialPriceSection = useMemo(
+    () => canApplySpecialPrice || ventaEspecialAplicada,
+    [canApplySpecialPrice, ventaEspecialAplicada],
+  );
   const finishActionLabel = useMemo(
     () => ((order?.tipo_fac_rem ?? 10) === 20 ? 'Terminar pedido con remisión' : 'Terminar pedido facturado'),
     [order?.tipo_fac_rem],
@@ -253,6 +258,32 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       },
     ],
     [documentFieldLabel, documentoGlobalAplicado, documentoGuardado, noPedidoVisible, order?.no_pedido],
+  );
+  const warehouseTotalFaltante = useMemo(() => {
+    if (typeof order?.warehouse_total_faltante === 'number') {
+      return Number(order.warehouse_total_faltante);
+    }
+
+    return (order?.detalle || []).reduce((acc, line) => acc + Number(line.faltante || 0), 0);
+  }, [order?.detalle, order?.warehouse_total_faltante]);
+  const warehouseFullySupplied = useMemo(() => {
+    if (typeof order?.warehouse_fully_supplied === 'boolean') {
+      return order.warehouse_fully_supplied;
+    }
+
+    return warehouseTotalFaltante <= 0 && (order?.detalle || []).length > 0;
+  }, [order?.detalle, order?.warehouse_fully_supplied, warehouseTotalFaltante]);
+  const displaySubtotal = useMemo(
+    () => Number(order?.subtotal_signed ?? order?.subtotal ?? 0),
+    [order?.subtotal, order?.subtotal_signed],
+  );
+  const displayIva = useMemo(
+    () => Number(order?.iva_signed ?? order?.iva ?? 0),
+    [order?.iva, order?.iva_signed],
+  );
+  const displayTotal = useMemo(
+    () => Number(order?.total_signed ?? order?.total ?? 0),
+    [order?.total, order?.total_signed],
   );
   const canViewEvidence = useMemo(
     () => Boolean(order?.can_view_evidence ?? order?.can_upload_evidence ?? false),
@@ -687,6 +718,25 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     }
   };
 
+  const returnToWarehouse = async () => {
+    if (!token || !order || isBusy) {
+      return;
+    }
+
+    setIsBusy(true);
+    setErrorMessage(null);
+    try {
+      const response = await ordersApi.transition(token, order.id, 'almacen');
+      Alert.alert('Pedido regresado', response.message || 'El pedido regresó a almacén.');
+      onDone(order.id);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : 'No fue posible regresar el pedido a almacén.';
+      setErrorMessage(message);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const cancelFinalDocument = async () => {
     if (!token || !order || isBusy) {
       return;
@@ -847,7 +897,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
             {isAuthorizationStage
               ? 'CXC valida el pedido y lo libera a almacén.'
               : isBillingStage
-                ? 'CXC registra el documento final y cierra el flujo.'
+                ? 'CXC registra el documento final y, si aún falta material, puede regresar el pedido a almacén.'
                 : isFinishedStage
                   ? 'CXC puede revisar el cierre y, si aplica, cancelar el documento final con trazabilidad.'
                   : 'Operación actual de CXC.'}
@@ -874,15 +924,15 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
         <View style={styles.amountsRow}>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>Subtotal</Text>
-            <Text style={styles.amountValue}>{formatMoney(order.subtotal)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(displaySubtotal)}</Text>
           </View>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>IVA</Text>
-            <Text style={styles.amountValue}>{formatMoney(order.iva)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(displayIva)}</Text>
           </View>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>Total</Text>
-            <Text style={styles.amountValue}>{formatMoney(order.total)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(displayTotal)}</Text>
           </View>
         </View>
 
@@ -1129,40 +1179,44 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
             </Pressable>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Precio especial</Text>
-            <Text style={styles.hint}>
-              CXC puede aplicar o retirar precio especial en FACTURACION usando la regla precio promedio + 3%.
-            </Text>
-            <View style={styles.summaryGrid}>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Estado actual</Text>
-                <Text style={styles.summaryValue}>
-                  {ventaEspecialAplicada ? 'Aplicado' : 'No aplicado'}
-                </Text>
-              </View>
-              <View style={styles.summaryCell}>
-                <Text style={styles.summaryLabel}>Regla</Text>
-                <Text style={styles.summaryValue}>Precio promedio + 3%</Text>
-              </View>
-            </View>
-            <Pressable
-              style={[styles.secondaryButton, ventaEspecialAplicada ? styles.destructiveButton : styles.infoButton]}
-              onPress={() => toggleVentaEspecial(!ventaEspecialAplicada)}
-              disabled={isBusy}
-            >
-              <Text style={styles.primaryButtonLabel}>
-                {isBusy
-                  ? 'Procesando...'
-                  : ventaEspecialAplicada
-                    ? 'Quitar precio especial'
-                    : 'Aplicar precio especial'}
+          {shouldShowSpecialPriceSection ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Precio especial</Text>
+              <Text style={styles.hint}>
+                {canApplySpecialPrice
+                  ? 'CXC puede aplicar o retirar precio especial en FACTURACION usando la regla precio promedio + 3%.'
+                  : 'Este cliente ya pertenece al catálogo. Solo se permite retirar un precio especial que ya estuviera aplicado anteriormente.'}
               </Text>
-            </Pressable>
-            {specialPriceError ? (
-              <Text style={styles.cardError}>{specialPriceError}</Text>
-            ) : null}
-          </View>
+              <View style={styles.summaryGrid}>
+                <View style={styles.summaryCell}>
+                  <Text style={styles.summaryLabel}>Estado actual</Text>
+                  <Text style={styles.summaryValue}>
+                    {ventaEspecialAplicada ? 'Aplicado' : 'No aplicado'}
+                  </Text>
+                </View>
+                <View style={styles.summaryCell}>
+                  <Text style={styles.summaryLabel}>Regla</Text>
+                  <Text style={styles.summaryValue}>Precio promedio + 3%</Text>
+                </View>
+              </View>
+              <Pressable
+                style={[styles.secondaryButton, ventaEspecialAplicada ? styles.destructiveButton : styles.infoButton, !canApplySpecialPrice && !ventaEspecialAplicada && styles.primaryButtonDisabled]}
+                onPress={() => toggleVentaEspecial(!ventaEspecialAplicada)}
+                disabled={isBusy || (!canApplySpecialPrice && !ventaEspecialAplicada)}
+              >
+                <Text style={styles.primaryButtonLabel}>
+                  {isBusy
+                    ? 'Procesando...'
+                    : ventaEspecialAplicada
+                      ? 'Quitar precio especial'
+                      : 'Aplicar precio especial'}
+                </Text>
+              </Pressable>
+              {specialPriceError ? (
+                <Text style={styles.cardError}>{specialPriceError}</Text>
+              ) : null}
+            </View>
+          ) : null}
 
           {canEditMlFacturacion ? (
             <View style={styles.card}>
@@ -1268,11 +1322,23 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
               Debes guardar el documento final antes de poder terminar el pedido.
             </Text>
           ) : null}
+          {!warehouseFullySupplied ? (
+            <Text style={styles.warningText}>
+              Faltan {warehouseTotalFaltante} pieza(s) por surtir. Regresa el pedido a almacén antes de terminarlo.
+            </Text>
+          ) : null}
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={returnToWarehouse}
+            disabled={isBusy}
+          >
+            <Text style={styles.secondaryButtonLabel}>{isBusy ? 'Procesando...' : 'Regresar a Almacén'}</Text>
+          </Pressable>
 
           <Pressable
-            style={[styles.primaryButton, !documentoGuardado && styles.primaryButtonDisabled]}
+            style={[styles.primaryButton, (!documentoGuardado || !warehouseFullySupplied) && styles.primaryButtonDisabled]}
             onPress={continueFlow}
-            disabled={isBusy || !documentoGuardado}
+            disabled={isBusy || !documentoGuardado || !warehouseFullySupplied}
           >
             <Text style={styles.primaryButtonLabel}>{isBusy ? 'Procesando...' : finishActionLabel}</Text>
           </Pressable>

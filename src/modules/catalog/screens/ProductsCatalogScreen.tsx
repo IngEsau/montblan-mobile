@@ -19,13 +19,34 @@ import { palette } from '../../../shared/theme/palette';
 import { typography } from '../../../shared/theme/typography';
 import { formatMoney } from '../../../shared/utils/formatters';
 
+function normalizeRole(role: string | null | undefined) {
+  return String(role ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+}
+
+function formatInventoryValue(value: number | null | undefined) {
+  if (value === null || typeof value === 'undefined' || Number.isNaN(Number(value))) {
+    return '0';
+  }
+
+  const numericValue = Number(value);
+  return Math.abs(numericValue - Math.round(numericValue)) < 0.0001
+    ? String(Math.round(numericValue))
+    : numericValue.toFixed(2);
+}
+
 export function ProductsCatalogScreen() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [items, setItems] = useState<Producto[]>([]);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const normalizedRole = normalizeRole(user?.rol);
+  const isAdmin = normalizedRole.includes('THECREATOR') || normalizedRole.includes('ADMIN') || normalizedRole.includes('SUPER');
 
   const fetchProducts = useCallback(
     async (refreshing = false, searchText = '') => {
@@ -114,9 +135,25 @@ export function ProductsCatalogScreen() {
               </View>
 
               <Text style={styles.name}>{item.nombre || 'Sin nombre'}</Text>
-              <Text style={styles.stock}>
-                SA: {item.inventario_sa ?? 0} | Fisico: {item.inventario_cmb ?? 0}
-              </Text>
+              <View style={styles.inventoryGrid}>
+                <Text style={styles.stock}>FISICO: {formatInventoryValue(item.inventario_fisico ?? item.inventario_cmb)}</Text>
+                <Text style={styles.stock}>SA: {formatInventoryValue(item.inventario_sa)}</Text>
+                <Text style={styles.stock}>ML: {formatInventoryValue(item.cantidad_negativa_ml)}</Text>
+                <Text style={styles.stock}>SAE: {formatInventoryValue(item.inventario_sae)}</Text>
+              </View>
+              {isAdmin ? (
+                <View style={styles.adminMeta}>
+                  <Text style={styles.adminMetaText}>Categoría: {item.categoria || '-'}</Text>
+                  <Text style={styles.adminMetaText}>Largo: {item.largo ?? '-'}</Text>
+                  <Text style={styles.adminMetaText}>Mín: {item.minimo ?? '-'}</Text>
+                  <Text style={styles.adminMetaText}>Máx: {item.maximo ?? '-'}</Text>
+                  <Text style={styles.adminMetaText}>
+                    Precio especial: {item.precio_venta_especial !== null && typeof item.precio_venta_especial !== 'undefined'
+                      ? formatMoney(item.precio_venta_especial)
+                      : '-'}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           )}
           ListEmptyComponent={
@@ -217,6 +254,24 @@ const styles = StyleSheet.create({
   },
   stock: {
     marginTop: 3,
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+  },
+  inventoryGrid: {
+    marginTop: 6,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  adminMeta: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    gap: 4,
+  },
+  adminMetaText: {
     color: palette.mutedText,
     fontFamily: typography.regular,
     fontSize: 12,

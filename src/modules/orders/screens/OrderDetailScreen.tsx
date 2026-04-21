@@ -203,6 +203,25 @@ export function OrderDetailScreen({
     () => Boolean(order?.almacen_status) && order?.status === 30,
     [order?.almacen_status, order?.status],
   );
+  const showCaptureAmounts = mode === 'sales';
+  const displaySubtotal = showCaptureAmounts
+    ? Number(order?.subtotal_captura_signed ?? order?.subtotal_signed ?? order?.subtotal_captura ?? order?.subtotal ?? 0)
+    : Number(order?.subtotal_signed ?? order?.subtotal ?? 0);
+  const displayIva = showCaptureAmounts
+    ? Number(order?.iva_captura_signed ?? order?.iva_signed ?? order?.iva_captura ?? order?.iva ?? 0)
+    : Number(order?.iva_signed ?? order?.iva ?? 0);
+  const displayTotal = showCaptureAmounts
+    ? Number(order?.total_captura_signed ?? order?.total_signed ?? order?.total_captura ?? order?.total ?? 0)
+    : Number(order?.total_signed ?? order?.total ?? 0);
+  const showCaptureReference = useMemo(() => {
+    if (!order || showCaptureAmounts) {
+      return false;
+    }
+
+    return Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
+      || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
+      || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
+  }, [order, showCaptureAmounts]);
 
   const sendToAuthorization = async () => {
     if (!token || !order || isSending) {
@@ -340,17 +359,22 @@ export function OrderDetailScreen({
         <View style={styles.amountsRow}>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>Subtotal</Text>
-            <Text style={styles.amountValue}>{formatMoney(order.subtotal)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(displaySubtotal)}</Text>
           </View>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>IVA</Text>
-            <Text style={styles.amountValue}>{formatMoney(order.iva)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(displayIva)}</Text>
           </View>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>Total</Text>
-            <Text style={styles.amountValue}>{formatMoney(order.total)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(displayTotal)}</Text>
           </View>
         </View>
+        {showCaptureReference ? (
+          <Text style={styles.captureReference}>
+            Captura original: Subtotal {formatMoney(Number(order.subtotal_captura_signed ?? order.subtotal_captura ?? 0))} | IVA {formatMoney(Number(order.iva_captura_signed ?? order.iva_captura ?? 0))} | Total {formatMoney(Number(order.total_captura_signed ?? order.total_captura ?? 0))}
+          </Text>
+        ) : null}
       </View>
 
       {order.observaciones ? (
@@ -643,6 +667,13 @@ const styles = StyleSheet.create({
     color: palette.primaryDark,
     fontFamily: typography.semiBold,
     fontSize: 14,
+  },
+  captureReference: {
+    marginTop: 10,
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    lineHeight: 18,
   },
   sectionCard: {
     backgroundColor: palette.card,

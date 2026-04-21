@@ -13,6 +13,7 @@ export type PedidoListItem = {
   no_pedido: string | null;
   no_cliente: string | null;
   cliente_razon_social: string | null;
+  cliente_temporal?: boolean;
   tipo_fac_rem: number;
   tipo_fac_rem_label: string | null;
   no_factura: string | null;
@@ -35,9 +36,19 @@ export type PedidoListItem = {
   has_evidence?: boolean;
   venta_especial?: boolean;
   inventory_feedback?: PedidoInventoryFeedbackItem[];
+  is_canceled_effective?: boolean;
   subtotal: number;
   iva: number;
   total: number;
+  subtotal_captura: number;
+  iva_captura: number;
+  total_captura: number;
+  subtotal_signed: number;
+  iva_signed: number;
+  total_signed: number;
+  subtotal_captura_signed: number;
+  iva_captura_signed: number;
+  total_captura_signed: number;
   fecha: number;
   fecha_text: string | null;
 };
@@ -129,6 +140,10 @@ export type Pedido = PedidoListItem & {
   max_upload_bytes?: number | null;
   evidencias?: PedidoEvidenciaItem[];
   direccion?: PedidoDireccion | null;
+  warehouse_fully_supplied?: boolean;
+  warehouse_total_faltante?: number;
+  warehouse_total_surtido?: number;
+  warehouse_total_rollo?: number;
   detalle: PedidoDetalleLinea[];
 };
 

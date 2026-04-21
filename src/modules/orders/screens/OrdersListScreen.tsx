@@ -56,7 +56,14 @@ export function OrdersListScreen({
   );
   const [mode, setMode] = useState<OrderMode>(resolvedInitialMode);
   const [orders, setOrders] = useState<PedidoListItem[]>([]);
-  const [salesTotal, setSalesTotal] = useState(0);
+  const [summary, setSummary] = useState({
+    subtotal: 0,
+    iva: 0,
+    total: 0,
+    captureSubtotal: 0,
+    captureIva: 0,
+    captureTotal: 0,
+  });
   const [search, setSearch] = useState('');
   const resolvedInitialWarehouseStage = useMemo<WarehouseStage>(
     () => initialWarehouseStage || 'all',
@@ -155,19 +162,25 @@ export function OrdersListScreen({
     [mode],
   );
 
-  const salesTotalLabel = useMemo(
-    () =>
-      new Intl.NumberFormat('es-MX', {
-        style: 'currency',
-        currency: 'MXN',
-        minimumFractionDigits: 2,
-      }).format(Number(salesTotal || 0)),
-    [salesTotal],
+  const kpiSummary = useMemo(
+    () => (mode === 'sales'
+      ? {
+          title: 'Totales de captura',
+          subtotal: summary.captureSubtotal,
+          iva: summary.captureIva,
+          total: summary.captureTotal,
+        }
+      : {
+          title: 'Totales operativos',
+          subtotal: summary.subtotal,
+          iva: summary.iva,
+          total: summary.total,
+        }),
+    [mode, summary.captureIva, summary.captureSubtotal, summary.captureTotal, summary.iva, summary.subtotal, summary.total],
   );
-
-  const salesTotalTitle = useMemo(
-    () => (mode === 'sales' ? 'Total de ventas global' : 'Sumatoria global'),
-    [mode],
+  const shouldShowKpi = useMemo(
+    () => !(mode === 'warehouse' && resolvedModes.length === 1 && resolvedModes[0] === 'warehouse'),
+    [mode, resolvedModes],
   );
 
   const modeButtons = useMemo(
@@ -198,10 +211,24 @@ export function OrdersListScreen({
         });
         const visibleItems = response.items.filter((item) => VISIBLE_STATUSES.includes(item.status));
         setOrders(visibleItems);
-        setSalesTotal(Number(response.meta?.sales_total || 0));
+        setSummary({
+          subtotal: Number(response.meta?.subtotal || 0),
+          iva: Number(response.meta?.iva || 0),
+          total: Number(response.meta?.total_amount || response.meta?.sales_total || 0),
+          captureSubtotal: Number(response.meta?.capture_subtotal || 0),
+          captureIva: Number(response.meta?.capture_iva || 0),
+          captureTotal: Number(response.meta?.capture_total || response.meta?.capture_sales_total || 0),
+        });
         setErrorMessage(null);
       } catch (error) {
-        setSalesTotal(0);
+        setSummary({
+          subtotal: 0,
+          iva: 0,
+          total: 0,
+          captureSubtotal: 0,
+          captureIva: 0,
+          captureTotal: 0,
+        });
         if (error instanceof ApiError) {
           setErrorMessage(error.message);
         } else {
@@ -252,11 +279,24 @@ export function OrdersListScreen({
         ) : null}
       </View>
 
-      <View style={styles.kpiCard}>
-        <Text style={styles.kpiLabel}>{salesTotalTitle}</Text>
-        <Text style={styles.kpiValue}>{salesTotalLabel}</Text>
-        <Text style={styles.kpiHint}>Se recalcula con los filtros activos de esta vista.</Text>
-      </View>
+      {shouldShowKpi ? (
+        <View style={styles.kpiCard}>
+          <Text style={styles.kpiLabel}>{kpiSummary.title}</Text>
+          <View style={styles.kpiRow}>
+            <Text style={styles.kpiItemLabel}>Subtotal</Text>
+            <Text style={styles.kpiItemValue}>{formatCurrency(kpiSummary.subtotal)}</Text>
+          </View>
+          <View style={styles.kpiRow}>
+            <Text style={styles.kpiItemLabel}>IVA</Text>
+            <Text style={styles.kpiItemValue}>{formatCurrency(kpiSummary.iva)}</Text>
+          </View>
+          <View style={styles.kpiRow}>
+            <Text style={styles.kpiItemLabelStrong}>Total</Text>
+            <Text style={styles.kpiValue}>{formatCurrency(kpiSummary.total)}</Text>
+          </View>
+          <Text style={styles.kpiHint}>Se recalcula con los filtros activos de esta vista.</Text>
+        </View>
+      ) : null}
 
       {mode === 'warehouse' ? (
         <View style={styles.stageRow}>
@@ -414,6 +454,7 @@ export function OrdersListScreen({
           renderItem={({ item }) => (
             <OrderCard
               order={item}
+              mode={mode}
               onPress={() => onOpenDetail(item.id, mode)}
               showEvidenceIndicator={canShowEvidenceIndicatorByMode}
             />
@@ -444,6 +485,14 @@ export function OrdersListScreen({
       )}
     </View>
   );
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0));
 }
 
 const styles = StyleSheet.create({
@@ -519,11 +568,33 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
+  kpiRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  kpiItemLabel: {
+    color: '#6a7a89',
+    fontFamily: typography.medium,
+    fontSize: 12,
+  },
+  kpiItemLabelStrong: {
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 13,
+  },
+  kpiItemValue: {
+    color: palette.primaryDark,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+  },
   kpiValue: {
     color: palette.primaryDark,
     fontFamily: typography.bold,
-    fontSize: 24,
-    marginTop: 4,
+    fontSize: 18,
+    marginTop: 0,
   },
   kpiHint: {
     color: '#7b8b97',
