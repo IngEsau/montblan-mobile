@@ -21,6 +21,9 @@ import { Pedido, PedidoDetalleLinea, PedidoEvidenciaItem } from '../types';
 import { downloadEvidence, previewEvidence } from '../utils/evidence';
 import { resolveOrderStageLabel } from '../utils/status';
 
+const SERVICIO_ML_CLIENT_CODE = '9009';
+const SERVICIO_ML_CLIENT_NAME = 'SERVICIO ML';
+
 type CxcOrderFormScreenProps = {
   orderId: number;
   onDone: (orderId: number) => void;
@@ -42,6 +45,7 @@ type MlSplitLineDraft = {
   descripcion: string;
   cantidadOriginal: number;
   cantidadDerivarInput: string;
+  precioInput: string;
 };
 
 function formatHistorialDate(value: string | null | undefined) {
@@ -73,12 +77,14 @@ function buildMlAdjustmentLine(line: PedidoDetalleLinea): MlAdjustmentLineDraft 
 }
 
 function buildMlSplitLine(line: PedidoDetalleLinea): MlSplitLineDraft {
+  const precioBase = line.precio_base ?? line.precio ?? 0;
   return {
     id: line.id,
     codigo: line.codigo || '-',
     descripcion: line.descripcion || 'Sin descripción',
     cantidadOriginal: Number(line.cantidad ?? 0),
     cantidadDerivarInput: '',
+    precioInput: Number(precioBase).toFixed(2),
   };
 }
 
@@ -351,13 +357,32 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     [],
   );
 
-  const updateMlSplitLine = useCallback((lineId: number, value: string) => {
+  const updateMlSplitQtyLine = useCallback((lineId: number, value: string) => {
     setMlSplitLines((prev) =>
       prev.map((line) =>
         line.id === lineId
           ? {
               ...line,
               cantidadDerivarInput: normalizeIntegerInput(value),
+            }
+          : line,
+      ),
+    );
+  }, []);
+
+  const updateMlSplitPriceLine = useCallback((lineId: number, value: string) => {
+    const normalized = value.replace(/[^0-9.]/g, '');
+    const parts = normalized.split('.');
+    const integerPart = parts.shift() || '';
+    const decimalPart = parts.join('').slice(0, 2);
+    const nextValue = decimalPart.length > 0 ? `${integerPart}.${decimalPart}` : integerPart;
+
+    setMlSplitLines((prev) =>
+      prev.map((line) =>
+        line.id === lineId
+          ? {
+              ...line,
+              precioInput: nextValue,
             }
           : line,
       ),
@@ -594,7 +619,8 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     }
 
     const noClienteDestino = splitNoClienteInput.trim();
-    const razonSocialDestino = splitRazonSocialInput.trim();
+    const razonSocialDestino =
+      noClienteDestino === SERVICIO_ML_CLIENT_CODE ? SERVICIO_ML_CLIENT_NAME : splitRazonSocialInput.trim();
     const vendedorDestino = splitVendedorInput.trim();
 
     if (!noClienteDestino) {
@@ -607,7 +633,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       return;
     }
 
-    const lineas: Array<{ id: number; cantidad: number }> = [];
+    const lineas: Array<{ id: number; cantidad: number; precio: number }> = [];
     for (const line of mlSplitLines) {
       const cantidad = Number.parseInt(line.cantidadDerivarInput, 10);
       if (!line.cantidadDerivarInput.trim()) {
@@ -624,9 +650,16 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
         return;
       }
 
+      const precio = Number.parseFloat(line.precioInput);
+      if (!line.precioInput.trim() || Number.isNaN(precio) || precio < 0) {
+        setErrorMessage(`El precio derivado debe ser mayor o igual a 0 en la línea ${line.codigo}.`);
+        return;
+      }
+
       lineas.push({
         id: line.id,
         cantidad,
+        precio: Number(precio.toFixed(2)),
       });
     }
 
@@ -1278,10 +1311,19 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
                   <TextInput
               placeholderTextColor={palette.mutedText}
                     value={line.cantidadDerivarInput}
-                    onChangeText={(value) => updateMlSplitLine(line.id, value)}
+                    onChangeText={(value) => updateMlSplitQtyLine(line.id, value)}
                     style={styles.input}
                     keyboardType="number-pad"
                     placeholder="0"
+                  />
+                  <Text style={styles.fieldLabel}>Precio derivado</Text>
+                  <TextInput
+              placeholderTextColor={palette.mutedText}
+                    value={line.precioInput}
+                    onChangeText={(value) => updateMlSplitPriceLine(line.id, value)}
+                    style={styles.input}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
                   />
                 </View>
               ))}

@@ -322,6 +322,7 @@ export type PedidoCxcSplitMlClienteDestino = {
 export type PedidoCxcSplitMlLineaInput = {
   id: number;
   cantidad: number;
+  precio?: number;
 };
 
 export type PedidoCxcSplitMlPayload = {
