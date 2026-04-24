@@ -99,6 +99,14 @@ export type PedidoEvidenciaItem = {
   previewable: boolean;
 };
 
+export type PedidoMlAssignableSeller = {
+  id: number;
+  username: string | null;
+  display_name: string;
+  label: string;
+  role_name?: string | null;
+};
+
 export type Pedido = PedidoListItem & {
   ruta: string | null;
   fecha_entrega: string | null;
@@ -139,6 +147,7 @@ export type Pedido = PedidoListItem & {
   can_upload_evidence?: boolean;
   max_upload_bytes?: number | null;
   evidencias?: PedidoEvidenciaItem[];
+  ml_assignable_sellers?: PedidoMlAssignableSeller[];
   direccion?: PedidoDireccion | null;
   warehouse_fully_supplied?: boolean;
   warehouse_total_faltante?: number;
@@ -316,6 +325,7 @@ export type PedidoCxcUpdatePayload = {
 export type PedidoCxcSplitMlClienteDestino = {
   no_cliente: string;
   cliente_razon_social: string;
+  vendedor_id?: number;
   vendedor?: string;
 };
 

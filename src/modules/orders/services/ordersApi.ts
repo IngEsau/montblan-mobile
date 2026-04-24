@@ -63,6 +63,7 @@ type ClienteByClaveResponse = {
     clave: string;
     nombre: string | null;
     nombre_comercial: string | null;
+    asignado_a_id?: number | null;
     asignado_a_nombre: string | null;
     asignado_a_username: string | null;
   };

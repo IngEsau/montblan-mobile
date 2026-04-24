@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -17,7 +19,7 @@ import { formatMoney } from '../../../shared/utils/formatters';
 import { useAuth } from '../../auth/AuthContext';
 import { EvidenceSection } from '../components/EvidenceSection';
 import { ordersApi } from '../services/ordersApi';
-import { Pedido, PedidoDetalleLinea, PedidoEvidenciaItem } from '../types';
+import { Pedido, PedidoDetalleLinea, PedidoEvidenciaItem, PedidoMlAssignableSeller } from '../types';
 import { downloadEvidence, previewEvidence } from '../utils/evidence';
 import { resolveOrderStageLabel } from '../utils/status';
 
@@ -117,7 +119,9 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
   const [noFacturaInput, setNoFacturaInput] = useState('');
   const [splitNoClienteInput, setSplitNoClienteInput] = useState('');
   const [splitRazonSocialInput, setSplitRazonSocialInput] = useState('');
-  const [splitVendedorInput, setSplitVendedorInput] = useState('');
+  const [splitSellerId, setSplitSellerId] = useState<number | null>(null);
+  const [sellerModalOpen, setSellerModalOpen] = useState(false);
+  const [sellerSearch, setSellerSearch] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [cancelConfirmInput, setCancelConfirmInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -307,6 +311,27 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     () => canManageEvidence || existingEvidence.length > 0,
     [canManageEvidence, existingEvidence.length],
   );
+  const mlAssignableSellers = useMemo<PedidoMlAssignableSeller[]>(
+    () => order?.ml_assignable_sellers || [],
+    [order?.ml_assignable_sellers],
+  );
+  const selectedMlAssignableSeller = useMemo(
+    () => mlAssignableSellers.find((item) => item.id === splitSellerId) || null,
+    [mlAssignableSellers, splitSellerId],
+  );
+  const filteredMlAssignableSellers = useMemo(() => {
+    const needle = sellerSearch.trim().toLowerCase();
+    if (!needle) {
+      return mlAssignableSellers;
+    }
+
+    return mlAssignableSellers.filter((item) => {
+      const label = (item.label || '').toLowerCase();
+      const displayName = (item.display_name || '').toLowerCase();
+      const username = (item.username || '').toLowerCase();
+      return label.includes(needle) || displayName.includes(needle) || username.includes(needle);
+    });
+  }, [mlAssignableSellers, sellerSearch]);
 
   const fetchCxcData = useCallback(async () => {
     if (!token) {
@@ -324,7 +349,8 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       setNoFacturaInput(item.no_factura || '');
       setSplitNoClienteInput('');
       setSplitRazonSocialInput('');
-      setSplitVendedorInput('');
+      setSplitSellerId(null);
+      setSellerSearch('');
       setCancelConfirmInput('');
       setCancelReason('');
 
@@ -550,9 +576,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     if (!token || !clave) {
       if (clearOnNotFound) {
         setSplitRazonSocialInput('');
-        if (!splitVendedorInput.trim()) {
-          setSplitVendedorInput('');
-        }
+        setSplitSellerId(null);
       }
       return;
     }
@@ -565,7 +589,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       const response = await ordersApi.clienteByClave(token, clave);
       const cliente = response.item;
       const razonSocial = (cliente.nombre_comercial || cliente.nombre || '').trim();
-      const vendedorSugerido = (cliente.asignado_a_nombre || cliente.asignado_a_username || '').trim();
+      const vendedorSugeridoId = Number(cliente.asignado_a_id || 0);
 
       if (cliente.clave) {
         setSplitNoClienteInput(cliente.clave);
@@ -573,8 +597,11 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       if (razonSocial) {
         setSplitRazonSocialInput(razonSocial);
       }
-      if (!splitVendedorInput.trim() && vendedorSugerido) {
-        setSplitVendedorInput(vendedorSugerido);
+      if (splitSellerId === null && vendedorSugeridoId > 0) {
+        const sellerExists = mlAssignableSellers.some((item) => item.id === vendedorSugeridoId);
+        if (sellerExists) {
+          setSplitSellerId(vendedorSugeridoId);
+        }
       }
       lastAutofilledSplitClientRef.current = cliente.clave || clave;
     } catch (error) {
@@ -587,7 +614,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       }
       lastAutofilledSplitClientRef.current = '';
     }
-  }, [splitNoClienteInput, splitVendedorInput, token]);
+  }, [mlAssignableSellers, splitNoClienteInput, splitSellerId, token]);
 
   useEffect(() => {
     const clave = splitNoClienteInput.trim();
@@ -621,7 +648,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     const noClienteDestino = splitNoClienteInput.trim();
     const razonSocialDestino =
       noClienteDestino === SERVICIO_ML_CLIENT_CODE ? SERVICIO_ML_CLIENT_NAME : splitRazonSocialInput.trim();
-    const vendedorDestino = splitVendedorInput.trim();
+    const vendedorDestinoId = splitSellerId;
 
     if (!noClienteDestino) {
       setErrorMessage('Debes capturar el número de cliente destino.');
@@ -630,6 +657,11 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
 
     if (!razonSocialDestino) {
       setErrorMessage('Debes capturar la razón social del cliente destino.');
+      return;
+    }
+
+    if (!vendedorDestinoId || !mlAssignableSellers.some((item) => item.id === vendedorDestinoId)) {
+      setErrorMessage('Debes asignar un vendedor válido para el pedido derivado.');
       return;
     }
 
@@ -676,7 +708,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
           cliente_destino: {
             no_cliente: noClienteDestino,
             cliente_razon_social: razonSocialDestino,
-            vendedor: vendedorDestino || undefined,
+            vendedor_id: vendedorDestinoId,
           },
           lineas,
         },
@@ -892,6 +924,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
   }
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{isAuthorizationStage ? 'Autorización' : isBillingStage ? 'Facturación' : isFinishedStage ? 'Terminado / Cancelación' : 'CXC'}</Text>
       <Text style={styles.subtitle}>Pedido #{order.no_pedido || order.id}</Text>
@@ -1280,14 +1313,25 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
                 style={styles.input}
                 placeholder="Razón social del cliente destino"
               />
-              <Text style={styles.fieldLabel}>Vendedor destino</Text>
-              <TextInput
-              placeholderTextColor={palette.mutedText}
-                value={splitVendedorInput}
-                onChangeText={setSplitVendedorInput}
-                style={styles.input}
-                placeholder="Vendedor informativo para el pedido derivado"
-              />
+              <Text style={styles.fieldLabel}>Asignar vendedor</Text>
+              <Pressable
+                style={[styles.selectorButton, mlAssignableSellers.length === 0 && styles.selectorButtonDisabled]}
+                onPress={() => {
+                  if (mlAssignableSellers.length === 0) {
+                    return;
+                  }
+                  setSellerSearch('');
+                  setSellerModalOpen(true);
+                }}
+                disabled={mlAssignableSellers.length === 0}
+              >
+                <Text style={[styles.selectorButtonLabel, !selectedMlAssignableSeller && styles.selectorButtonPlaceholder]}>
+                  {selectedMlAssignableSeller?.label || 'Selecciona un vendedor'}
+                </Text>
+              </Pressable>
+              {mlAssignableSellers.length === 0 ? (
+                <Text style={styles.hint}>No hay vendedores disponibles para asignar en este momento.</Text>
+              ) : null}
               <Text style={styles.mlAdjustmentWarning}>
                 Deja en blanco o en cero las líneas que no quieras derivar. Solo se enviarán las cantidades capturadas.
               </Text>
@@ -1461,6 +1505,42 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
 
       {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
     </ScrollView>
+    <Modal visible={sellerModalOpen} animationType="slide" transparent>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Asignar vendedor</Text>
+          <TextInput
+            value={sellerSearch}
+            onChangeText={setSellerSearch}
+            style={styles.modalSearchInput}
+            placeholder="Buscar por nombre o usuario"
+            placeholderTextColor={palette.mutedText}
+          />
+          <FlatList
+            data={filteredMlAssignableSellers}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={styles.modalListContent}
+            renderItem={({ item }) => (
+              <Pressable
+                style={styles.modalOption}
+                onPress={() => {
+                  setSplitSellerId(item.id);
+                  setSellerModalOpen(false);
+                }}
+              >
+                <Text style={styles.modalOptionLabel}>{item.label}</Text>
+                {item.role_name ? <Text style={styles.modalOptionMeta}>{item.role_name}</Text> : null}
+              </Pressable>
+            )}
+            ListEmptyComponent={<Text style={styles.modalEmpty}>No se encontraron vendedores.</Text>}
+          />
+          <Pressable style={styles.modalCloseButton} onPress={() => setSellerModalOpen(false)}>
+            <Text style={styles.modalCloseButtonLabel}>Cerrar</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -1760,9 +1840,98 @@ const styles = StyleSheet.create({
     color: palette.text,
     fontFamily: typography.regular,
   },
+  selectorButton: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  selectorButtonDisabled: {
+    opacity: 0.65,
+  },
+  selectorButtonLabel: {
+    color: palette.text,
+    fontFamily: typography.regular,
+    fontSize: 14,
+  },
+  selectorButtonPlaceholder: {
+    color: palette.mutedText,
+  },
   textarea: {
     minHeight: 70,
     textAlignVertical: 'top',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    maxHeight: '75%',
+    backgroundColor: palette.background,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 16,
+  },
+  modalTitle: {
+    color: palette.navy,
+    fontFamily: typography.bold,
+    fontSize: 18,
+    marginBottom: 10,
+  },
+  modalSearchInput: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: palette.text,
+    fontFamily: typography.regular,
+    marginBottom: 10,
+  },
+  modalListContent: {
+    paddingBottom: 12,
+  },
+  modalOption: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  modalOptionLabel: {
+    color: palette.text,
+    fontFamily: typography.semiBold,
+    fontSize: 14,
+  },
+  modalOptionMeta: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modalEmpty: {
+    color: palette.mutedText,
+    fontFamily: typography.regular,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 18,
+  },
+  modalCloseButton: {
+    backgroundColor: palette.navy,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCloseButtonLabel: {
+    color: '#fff',
+    fontFamily: typography.semiBold,
+    fontSize: 14,
   },
   previewCard: {
     marginTop: 8,
