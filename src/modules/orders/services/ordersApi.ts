@@ -24,10 +24,11 @@ import { evidenceApi } from './evidenceApi';
 type ListOrdersParams = {
   search?: string;
   status?: number;
+  postfechado?: 0 | 1;
   page?: number;
 };
 
-function buildOrdersQuery({ search, status, page = 1 }: ListOrdersParams) {
+function buildOrdersQuery({ search, status, postfechado, page = 1 }: ListOrdersParams) {
   const params = new URLSearchParams();
   params.set('per_page', '20');
   params.set('page', String(page));
@@ -38,6 +39,10 @@ function buildOrdersQuery({ search, status, page = 1 }: ListOrdersParams) {
 
   if (status !== undefined) {
     params.set('status', String(status));
+  }
+
+  if (postfechado !== undefined) {
+    params.set('postfechado', String(postfechado));
   }
 
   return params.toString();

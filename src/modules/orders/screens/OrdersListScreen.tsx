@@ -116,6 +116,14 @@ export function OrdersListScreen({
           : warehouseStage === 'finished'
             ? FINISHED_STATUS
             : undefined;
+  const postdatedFilter =
+    mode === 'warehouse'
+      ? warehouseStage === 'processing'
+        ? 0
+        : warehouseStage === 'postdated'
+          ? 1
+          : undefined
+      : undefined;
 
   const title = useMemo(
     () =>
@@ -208,6 +216,7 @@ export function OrdersListScreen({
         const response = await ordersApi.list(token, {
           search: searchText,
           status: statusFilter,
+          postfechado: postdatedFilter,
         });
         const visibleItems = response.items.filter((item) => VISIBLE_STATUSES.includes(item.status));
         setOrders(visibleItems);
@@ -239,7 +248,7 @@ export function OrdersListScreen({
         setIsRefreshing(false);
       }
     },
-    [statusFilter, token],
+    [postdatedFilter, statusFilter, token],
   );
 
   useEffect(() => {
