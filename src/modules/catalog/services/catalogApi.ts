@@ -1,6 +1,9 @@
 import { apiRequest } from '../../../shared/api/http';
 import { Cliente, CodigoPostalLookupResponse, PaginatedResponse, Producto } from '../types';
 
+const SERVICIO_ML_CLIENT_CODE = '9009';
+const SERVICIO_ML_CLIENT_NAME = 'SERVICIO ML';
+
 type BaseCatalogOptions = {
   page?: number;
   perPage?: number;
@@ -24,6 +27,53 @@ function buildQuery(params: Record<string, string | number | undefined>) {
   });
 
   return query.toString();
+}
+
+function buildServicioMlCliente(): Cliente {
+  return {
+    id: -9009,
+    clave: SERVICIO_ML_CLIENT_CODE,
+    nombre: SERVICIO_ML_CLIENT_NAME,
+    nombre_comercial: SERVICIO_ML_CLIENT_NAME,
+    calle: null,
+    telefono: null,
+    saldo: 0,
+    asignado_a_id: null,
+    asignado_a_username: null,
+    asignado_a_nombre: null,
+  };
+}
+
+function matchesServicioMlSearch(search = '') {
+  const normalized = search.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return SERVICIO_ML_CLIENT_CODE.includes(normalized)
+    || SERVICIO_ML_CLIENT_NAME.toLowerCase().includes(normalized);
+}
+
+function mergeServicioMlCliente(items: Cliente[], search = '') {
+  if (!matchesServicioMlSearch(search)) {
+    return items;
+  }
+
+  const existingIndex = items.findIndex((item) => (item.clave || '').trim() === SERVICIO_ML_CLIENT_CODE);
+  if (existingIndex === -1) {
+    return [buildServicioMlCliente(), ...items];
+  }
+
+  const existing = items[existingIndex];
+  const merged = {
+    ...buildServicioMlCliente(),
+    ...existing,
+    clave: SERVICIO_ML_CLIENT_CODE,
+    nombre: existing.nombre || existing.nombre_comercial || SERVICIO_ML_CLIENT_NAME,
+    nombre_comercial: existing.nombre_comercial || existing.nombre || SERVICIO_ML_CLIENT_NAME,
+  };
+
+  return [merged, ...items.filter((_, index) => index !== existingIndex)];
 }
 
 async function fetchAllPages<T>(
@@ -73,13 +123,26 @@ export const catalogApi = {
 
     return apiRequest<PaginatedResponse<Producto>>(`/productos?${query}`, { token });
   },
-  listClientesAll: (token: string, search = '', options: BaseCatalogOptions = {}) =>
-    fetchAllPages((page) =>
+  listClientesAll: async (token: string, search = '', options: BaseCatalogOptions = {}) => {
+    const response = await fetchAllPages((page) =>
       catalogApi.listClientes(token, search, {
         ...options,
         page,
       }),
-    ),
+    );
+    const items = mergeServicioMlCliente(response.items, search);
+
+    return {
+      ...response,
+      meta: {
+        ...response.meta,
+        total: items.length,
+        per_page: items.length,
+        page_count: 1,
+      },
+      items,
+    };
+  },
   listProductosAll: (token: string, search = '', options: ProductosOptions = {}) =>
     fetchAllPages((page) =>
       catalogApi.listProductos(token, search, {
