@@ -182,7 +182,7 @@ export function OrderDetailScreen({
     () =>
       Boolean(
         order?.status === 45 &&
-          order?.es_mercado_libre &&
+          (order?.es_ml_salida ?? (order?.es_mercado_libre && !order?.es_ml_facturacion)) &&
           ((order?.can_edit_ml_facturacion ?? false) ||
             (user?.permissions?.can_edit_ml_facturacion ?? false) ||
             (user?.permissions?.can_cxc ?? false) ||
@@ -193,7 +193,15 @@ export function OrderDetailScreen({
             normalizedRole.includes('ADMIN') ||
             normalizedRole.includes('SUPER')),
       ),
-    [normalizedRole, order?.can_edit_ml_facturacion, order?.es_mercado_libre, order?.status, user?.permissions],
+    [
+      normalizedRole,
+      order?.can_edit_ml_facturacion,
+      order?.es_mercado_libre,
+      order?.es_ml_facturacion,
+      order?.es_ml_salida,
+      order?.status,
+      user?.permissions,
+    ],
   );
   const canOpenFinishedList = useMemo(
     () => canSeeFinishedStage && order?.status === 50,
@@ -345,9 +353,11 @@ export function OrderDetailScreen({
         <Text style={styles.customer}>{order.cliente_razon_social || 'Sin razón social'}</Text>
         <Text style={styles.meta}>Cliente: {order.no_cliente || '-'}</Text>
         {order.postfechado ? <Text style={styles.meta}>Entrega: {formatDateYmd(order.fecha_entrega)}</Text> : null}
-        {order.es_mercado_libre ? <Text style={styles.meta}>Mercado Libre: Sí</Text> : null}
-        {order.origen_ml ? <Text style={styles.meta}>Pedido derivado desde ML: Sí</Text> : null}
         {order.es_mercado_libre ? (
+          <Text style={styles.meta}>Mercado Libre: {order.es_ml_facturacion ? 'Facturación' : 'Salida'}</Text>
+        ) : null}
+        {order.origen_ml ? <Text style={styles.meta}>Pedido derivado desde ML: Sí</Text> : null}
+        {order.es_ml_salida ? (
           <Text style={styles.meta}>
             Inventario afectado en almacén: {order.ml_inventario_afectado ? 'Sí' : 'No'}
           </Text>
@@ -400,9 +410,11 @@ export function OrderDetailScreen({
         <View style={styles.mlInfoCard}>
           <Text style={styles.mlInfoTitle}>Mercado Libre</Text>
           <Text style={styles.mlInfoText}>
-            {order.ml_inventario_afectado
-              ? 'El inventario de este pedido ya fue afectado desde almacén para reflejar la salida física del producto.'
-              : 'Este pedido está identificado como Mercado Libre. El inventario se afectará cuando salga de almacén hacia facturación.'}
+            {order.es_ml_facturacion
+              ? 'Este pedido factura material ya consignado en ML; al terminar descuenta solo el saldo ML y no toca inventario físico.'
+              : order.ml_inventario_afectado
+                ? 'El inventario de este pedido ya fue afectado desde almacén para reflejar la salida física del producto.'
+                : 'Este pedido está identificado como Mercado Libre. El inventario se afectará cuando salga de almacén hacia facturación.'}
           </Text>
           {order.ml_pendiente_facturacion ? (
             <Text style={styles.mlInfoMeta}>

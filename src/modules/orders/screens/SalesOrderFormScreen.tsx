@@ -56,6 +56,8 @@ const CLIENTE_TEMPORAL_MIN = 3000;
 const CLIENTE_TEMPORAL_MAX = 3999;
 const SERVICIO_ML_CLIENT_CODE = '9009';
 const SERVICIO_ML_CLIENT_NAME = 'SERVICIO ML';
+const MERCADO_LIBRE_FACTURACION_CLIENT_CODE = '10001';
+const MERCADO_LIBRE_FACTURACION_CLIENT_NAME = 'MERCADO LIBRE FACTURACION';
 const FALLBACK_EVIDENCE_MAX_BYTES = 2 * 1024 * 1024;
 
 function isTemporaryClientCode(value?: string | null) {
@@ -72,12 +74,29 @@ function isServicioMlClientCode(value?: string | null) {
   return (value || '').trim() === SERVICIO_ML_CLIENT_CODE;
 }
 
+function isMercadoLibreFacturacionClientCode(value?: string | null) {
+  return (value || '').trim() === MERCADO_LIBRE_FACTURACION_CLIENT_CODE;
+}
+
 function buildServicioMlCliente(): Cliente {
   return {
     id: -9009,
     clave: SERVICIO_ML_CLIENT_CODE,
     nombre: SERVICIO_ML_CLIENT_NAME,
     nombre_comercial: SERVICIO_ML_CLIENT_NAME,
+    calle: null,
+    telefono: null,
+    saldo: 0,
+    asignado_a_nombre: null,
+  };
+}
+
+function buildMercadoLibreFacturacionCliente(): Cliente {
+  return {
+    id: -10001,
+    clave: MERCADO_LIBRE_FACTURACION_CLIENT_CODE,
+    nombre: MERCADO_LIBRE_FACTURACION_CLIENT_NAME,
+    nombre_comercial: MERCADO_LIBRE_FACTURACION_CLIENT_NAME,
     calle: null,
     telefono: null,
     saldo: 0,
@@ -244,6 +263,8 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
           setSelectedCliente(null);
         } else if (isServicioMlClientCode(item.no_cliente || '')) {
           applyClienteSelection(buildServicioMlCliente());
+        } else if (isMercadoLibreFacturacionClientCode(item.no_cliente || '')) {
+          applyClienteSelection(buildMercadoLibreFacturacionCliente());
         } else if (selectedFromCatalog) {
           applyClienteSelection(selectedFromCatalog);
           if (!item.direccion?.direccion) {
@@ -335,6 +356,14 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       const servicioMlCliente = buildServicioMlCliente();
       if (selectedCliente?.clave !== servicioMlCliente.clave) {
         applyClienteSelection(servicioMlCliente);
+      }
+      return;
+    }
+
+    if (isMercadoLibreFacturacionClientCode(normalized)) {
+      const mercadoLibreFacturacionCliente = buildMercadoLibreFacturacionCliente();
+      if (selectedCliente?.clave !== mercadoLibreFacturacionCliente.clave) {
+        applyClienteSelection(mercadoLibreFacturacionCliente);
       }
       return;
     }

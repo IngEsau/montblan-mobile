@@ -192,6 +192,10 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
     [order?.almacen_status],
   );
   const isMercadoLibre = useMemo(() => Boolean(order?.es_mercado_libre), [order?.es_mercado_libre]);
+  const isMercadoLibreFacturacion = useMemo(
+    () => Boolean(order?.es_ml_facturacion),
+    [order?.es_ml_facturacion],
+  );
 
   const updateLineInput = (lineId: number, field: 'surtidoInput' | 'rolloInput', value: string) => {
     setLines((prev) =>
@@ -361,7 +365,9 @@ export function WarehouseOrderFormScreen({ orderId, onDone }: WarehouseOrderForm
         <View style={styles.mlCard}>
           <Text style={styles.mlTitle}>Mercado Libre</Text>
           <Text style={styles.helperInfo}>
-            Este pedido se comporta distinto al flujo normal: al enviarlo a facturación el inventario se descontará desde almacén para reflejar la salida física.
+            {isMercadoLibreFacturacion
+              ? 'Este pedido factura material ya consignado en ML; al cerrarlo se descontará solo del saldo ML.'
+              : 'Este pedido se comporta distinto al flujo normal: al enviarlo a facturación el inventario se descontará desde almacén para reflejar la salida física.'}
           </Text>
           {order.ml_inventario_afectado ? (
             <Text style={styles.mlInfo}>Inventario ya afectado en almacén. No se volverá a descontar en facturación.</Text>

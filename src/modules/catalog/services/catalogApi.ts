@@ -3,6 +3,8 @@ import { Cliente, CodigoPostalLookupResponse, PaginatedResponse, Producto } from
 
 const SERVICIO_ML_CLIENT_CODE = '9009';
 const SERVICIO_ML_CLIENT_NAME = 'SERVICIO ML';
+const MERCADO_LIBRE_FACTURACION_CLIENT_CODE = '10001';
+const MERCADO_LIBRE_FACTURACION_CLIENT_NAME = 'MERCADO LIBRE FACTURACION';
 
 type BaseCatalogOptions = {
   page?: number;
@@ -44,6 +46,21 @@ function buildServicioMlCliente(): Cliente {
   };
 }
 
+function buildMercadoLibreFacturacionCliente(): Cliente {
+  return {
+    id: -10001,
+    clave: MERCADO_LIBRE_FACTURACION_CLIENT_CODE,
+    nombre: MERCADO_LIBRE_FACTURACION_CLIENT_NAME,
+    nombre_comercial: MERCADO_LIBRE_FACTURACION_CLIENT_NAME,
+    calle: null,
+    telefono: null,
+    saldo: 0,
+    asignado_a_id: null,
+    asignado_a_username: null,
+    asignado_a_nombre: null,
+  };
+}
+
 function matchesServicioMlSearch(search = '') {
   const normalized = search.trim().toLowerCase();
   if (!normalized) {
@@ -52,6 +69,16 @@ function matchesServicioMlSearch(search = '') {
 
   return SERVICIO_ML_CLIENT_CODE.includes(normalized)
     || SERVICIO_ML_CLIENT_NAME.toLowerCase().includes(normalized);
+}
+
+function matchesMercadoLibreFacturacionSearch(search = '') {
+  const normalized = search.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return MERCADO_LIBRE_FACTURACION_CLIENT_CODE.includes(normalized)
+    || MERCADO_LIBRE_FACTURACION_CLIENT_NAME.toLowerCase().includes(normalized);
 }
 
 function mergeServicioMlCliente(items: Cliente[], search = '') {
@@ -71,6 +98,28 @@ function mergeServicioMlCliente(items: Cliente[], search = '') {
     clave: SERVICIO_ML_CLIENT_CODE,
     nombre: existing.nombre || existing.nombre_comercial || SERVICIO_ML_CLIENT_NAME,
     nombre_comercial: existing.nombre_comercial || existing.nombre || SERVICIO_ML_CLIENT_NAME,
+  };
+
+  return [merged, ...items.filter((_, index) => index !== existingIndex)];
+}
+
+function mergeMercadoLibreFacturacionCliente(items: Cliente[], search = '') {
+  if (!matchesMercadoLibreFacturacionSearch(search)) {
+    return items;
+  }
+
+  const existingIndex = items.findIndex((item) => (item.clave || '').trim() === MERCADO_LIBRE_FACTURACION_CLIENT_CODE);
+  if (existingIndex === -1) {
+    return [buildMercadoLibreFacturacionCliente(), ...items];
+  }
+
+  const existing = items[existingIndex];
+  const merged = {
+    ...buildMercadoLibreFacturacionCliente(),
+    ...existing,
+    clave: MERCADO_LIBRE_FACTURACION_CLIENT_CODE,
+    nombre: MERCADO_LIBRE_FACTURACION_CLIENT_NAME,
+    nombre_comercial: MERCADO_LIBRE_FACTURACION_CLIENT_NAME,
   };
 
   return [merged, ...items.filter((_, index) => index !== existingIndex)];
@@ -130,7 +179,7 @@ export const catalogApi = {
         page,
       }),
     );
-    const items = mergeServicioMlCliente(response.items, search);
+    const items = mergeServicioMlCliente(mergeMercadoLibreFacturacionCliente(response.items, search), search);
 
     return {
       ...response,

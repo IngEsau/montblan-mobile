@@ -149,7 +149,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     () =>
       Boolean(
         isBillingStage &&
-          order?.es_mercado_libre &&
+          (order?.es_ml_salida ?? (order?.es_mercado_libre && !order?.es_ml_facturacion)) &&
           ((order?.can_edit_ml_facturacion ?? false) ||
             (user?.permissions?.can_edit_ml_facturacion ?? false) ||
             (user?.permissions?.can_cxc ?? false) ||
@@ -159,6 +159,8 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       isBillingStage,
       order?.can_edit_ml_facturacion,
       order?.es_mercado_libre,
+      order?.es_ml_facturacion,
+      order?.es_ml_salida,
       roleCanCxc,
       user?.permissions?.can_cxc,
       user?.permissions?.can_edit_ml_facturacion,
@@ -208,6 +210,14 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
   );
   const isPostfechado = useMemo(() => Boolean(order?.postfechado), [order?.postfechado]);
   const isMercadoLibre = useMemo(() => Boolean(order?.es_mercado_libre), [order?.es_mercado_libre]);
+  const isMercadoLibreSalida = useMemo(
+    () => Boolean(order?.es_ml_salida ?? (order?.es_mercado_libre && !order?.es_ml_facturacion)),
+    [order?.es_mercado_libre, order?.es_ml_facturacion, order?.es_ml_salida],
+  );
+  const isMercadoLibreFacturacion = useMemo(
+    () => Boolean(order?.es_ml_facturacion),
+    [order?.es_ml_facturacion],
+  );
   const isMercadoLibreDerived = useMemo(() => Boolean(order?.origen_ml), [order?.origen_ml]);
   const mlInventarioAfectado = useMemo(
     () => Boolean(order?.ml_inventario_afectado),
@@ -848,7 +858,9 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       }
     };
 
-    const confirmationMessage = isMercadoLibre && mlInventarioAfectado
+    const confirmationMessage = isMercadoLibreFacturacion
+      ? `Se cancelará el documento ${currentDocument}.\n\nNo se hará reversa física; el saldo ML ignorará este documento cancelado. El flujo permanecerá en TERMINADO.`
+      : isMercadoLibreSalida && mlInventarioAfectado
       ? `Se cancelará el documento ${currentDocument}.\n\nEl inventario se mantendrá afectado porque este pedido es Mercado Libre y la salida ya ocurrió en almacén. El flujo permanecerá en TERMINADO.`
       : `Se cancelará el documento ${currentDocument}.\n\nEsta acción revertirá inventario y el flujo permanecerá en TERMINADO.`;
 
@@ -970,9 +982,11 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
           </Text>
           {isMercadoLibre ? (
             <Text style={styles.mlHint}>
-              {mlInventarioAfectado
-                ? 'Mercado Libre: el inventario ya fue afectado en almacén y facturación no volverá a descontarlo.'
-                : 'Mercado Libre: al salir de almacén hacia facturación, el inventario se afecta para reflejar la salida física.'}
+              {isMercadoLibreFacturacion
+                ? 'Mercado Libre facturación: al terminar, descuenta únicamente el saldo ML y no toca inventario físico.'
+                : mlInventarioAfectado
+                  ? 'Mercado Libre: el inventario ya fue afectado en almacén y facturación no volverá a descontarlo.'
+                  : 'Mercado Libre: al salir de almacén hacia facturación, el inventario se afecta para reflejar la salida física.'}
             </Text>
           ) : null}
           {isMercadoLibreDerived ? (
@@ -1041,7 +1055,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
         {isMercadoLibre ? (
           <View style={styles.noteRow}>
             <Text style={styles.noteLabel}>Mercado Libre</Text>
-            <Text style={styles.noteValue}>Sí</Text>
+            <Text style={styles.noteValue}>{isMercadoLibreFacturacion ? 'Facturación' : 'Salida'}</Text>
           </View>
         ) : null}
         {isMercadoLibreDerived ? (
@@ -1050,7 +1064,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
             <Text style={styles.noteValue}>{mlOrigenPedidoId ? `Sí. Pedido origen #${mlOrigenPedidoId}` : 'Sí'}</Text>
           </View>
         ) : null}
-        {isMercadoLibre ? (
+        {isMercadoLibreSalida ? (
           <View style={styles.noteRow}>
             <Text style={styles.noteLabel}>Inventario afectado en almacén</Text>
             <Text style={styles.noteValue}>{mlInventarioAfectado ? 'Sí' : 'No'}</Text>
@@ -1436,8 +1450,10 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Documento final terminado</Text>
             <Text style={styles.meta}>
-              {isMercadoLibre && mlInventarioAfectado
-                ? 'El pedido ya cerró el flujo. En Mercado Libre el inventario ya había sido afectado desde almacén y la cancelación documental no reabre el pedido.'
+              {isMercadoLibreFacturacion
+                ? 'El pedido ya cerró el flujo. En Mercado Libre facturación solo se descuenta el saldo ML; la cancelación documental lo excluye del saldo.'
+                : isMercadoLibreSalida && mlInventarioAfectado
+                  ? 'El pedido ya cerró el flujo. En Mercado Libre el inventario ya había sido afectado desde almacén y la cancelación documental no reabre el pedido.'
                 : 'El pedido ya cerró el flujo y el inventario ya fue afectado. La cancelación del documento no reabre el pedido.'}
             </Text>
             <View style={styles.summaryGrid}>
@@ -1468,8 +1484,10 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Cancelar documento final</Text>
               <Text style={styles.hint}>
-                {isMercadoLibre && mlInventarioAfectado
-                  ? 'Confirma el número exacto del documento y captura el motivo. En Mercado Libre el inventario se mantendrá afectado porque la salida ya ocurrió en almacén.'
+                {isMercadoLibreFacturacion
+                  ? 'Confirma el número exacto del documento y captura el motivo. No habrá reversa física; el saldo ML ignorará este documento cancelado.'
+                  : isMercadoLibreSalida && mlInventarioAfectado
+                    ? 'Confirma el número exacto del documento y captura el motivo. En Mercado Libre el inventario se mantendrá afectado porque la salida ya ocurrió en almacén.'
                   : 'Confirma el número exacto del documento y captura el motivo. El inventario se revertirá y el pedido permanecerá en TERMINADO.'}
               </Text>
               <Text style={styles.fieldLabel}>Confirmar {documentFieldLabel}</Text>

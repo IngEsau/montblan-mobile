@@ -26,6 +26,8 @@ export type PedidoListItem = {
   documento_cancelado?: boolean;
   postfechado?: boolean;
   es_mercado_libre?: boolean;
+  es_ml_salida?: boolean;
+  es_ml_facturacion?: boolean;
   origen_ml?: boolean;
   ml_inventario_afectado?: boolean;
   inventario_preafectado?: boolean;
@@ -113,6 +115,8 @@ export type Pedido = PedidoListItem & {
   postfechado?: boolean;
   comentario_almacen?: string | null;
   es_mercado_libre?: boolean;
+  es_ml_salida?: boolean;
+  es_ml_facturacion?: boolean;
   origen_ml?: boolean;
   ml_origen_pedido_id?: number | null;
   ml_inventario_afectado?: boolean;
