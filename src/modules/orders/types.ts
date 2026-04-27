@@ -72,6 +72,7 @@ export type PedidoDetalleLinea = {
   tipo_comprobante_label: string | null;
   inventario_sa: number | null;
   inventario_cmb: number | null;
+  cantidad_negativa_ml?: number | null;
   inventario_disponible: number | null;
   disponibilidad_ok: boolean | null;
   largo?: number | null;

@@ -33,6 +33,7 @@ type DraftLine = {
   descripcion: string;
   inventarioSa: number | null;
   inventarioCmb: number | null;
+  inventarioMl: number | null;
 };
 
 type SalesOrderFormScreenProps = {
@@ -175,12 +176,25 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
 
   const isTemporaryClient = useMemo(() => isTemporaryClientCode(noClienteInput), [noClienteInput]);
   const isServicioMlClient = useMemo(() => isServicioMlClientCode(noClienteInput), [noClienteInput]);
+  const isMercadoLibreFacturacionClient = useMemo(
+    () => isMercadoLibreFacturacionClientCode(noClienteInput),
+    [noClienteInput],
+  );
 
-  const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null, tipo: 10 | 20) => {
+  const getInventarioDisponible = useCallback((inventarioSa: number | null, inventarioCmb: number | null, tipo: 10 | 20, inventarioMl?: number | null) => {
+    if (isMercadoLibreFacturacionClient) {
+      return Number(Number(inventarioMl ?? 0).toFixed(4));
+    }
+
     const sa = inventarioSa !== null ? Number(inventarioSa) : 0;
     const cmb = inventarioCmb !== null ? Number(inventarioCmb) : 0;
     return Number((tipo === 10 ? cmb : sa).toFixed(4));
-  }, []);
+  }, [isMercadoLibreFacturacionClient]);
+
+  const getInventarioSourceLabel = useCallback(
+    () => (isMercadoLibreFacturacionClient ? 'Saldo ML' : tipoComprobante === 10 ? 'Inv. CMB' : 'Inv. SA'),
+    [isMercadoLibreFacturacionClient, tipoComprobante],
+  );
 
   const resolveProductoPrice = useCallback(
     (producto: Producto | null | undefined) => {
@@ -289,6 +303,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             const code = line.codigo || '';
             const catalogProduct = productosResponse.items.find((producto) => producto.codigo === code);
             const lineName = catalogProduct?.nombre || line.descripcion || code || 'Producto';
+            const isMlFacturacionOrder = isMercadoLibreFacturacionClientCode(item.no_cliente || '');
             return {
               id: `edit-${line.id}-${nowSeed}-${index}`,
               productoId: catalogProduct?.id ?? null,
@@ -299,6 +314,9 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
               descripcion: line.descripcion || lineName,
               inventarioSa: line.inventario_sa ?? catalogProduct?.inventario_sa ?? null,
               inventarioCmb: line.inventario_cmb ?? catalogProduct?.inventario_cmb ?? null,
+              inventarioMl: isMlFacturacionOrder
+                ? line.inventario_disponible ?? catalogProduct?.cantidad_negativa_ml ?? null
+                : catalogProduct?.cantidad_negativa_ml ?? null,
             };
           }),
         );
@@ -568,6 +586,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
       descripcion: producto.nombre || producto.codigo,
       inventarioSa: producto.inventario_sa ?? null,
       inventarioCmb: producto.inventario_cmb ?? null,
+      inventarioMl: producto.cantidad_negativa_ml ?? null,
     };
 
     setLines((prev) => [...prev, line]);
@@ -617,7 +636,12 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
     () =>
       lines.map((line) => {
         const cantidad = Number(line.cantidad || 0);
-        const inventarioDisponible = getInventarioDisponible(line.inventarioSa, line.inventarioCmb, tipoComprobante);
+        const inventarioDisponible = getInventarioDisponible(
+          line.inventarioSa,
+          line.inventarioCmb,
+          tipoComprobante,
+          line.inventarioMl,
+        );
         const disponibilidadInsuficiente =
           inventarioDisponible !== null &&
           Number.isFinite(cantidad) &&
@@ -1360,7 +1384,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
             <Text style={styles.lineName}>{line.nombre}</Text>
             <Text style={[styles.inventorySummary, line.disponibilidadInsuficiente && styles.inventoryWarning]}>
-              Inv. disponible: {line.inventarioDisponible ?? 0} | SA: {line.inventarioSa ?? 0} | Fisico: {line.inventarioCmb ?? 0}
+              Inv. disponible: {line.inventarioDisponible ?? 0} | ML: {line.inventarioMl ?? 0} | SA: {line.inventarioSa ?? 0} | Fisico: {line.inventarioCmb ?? 0}
             </Text>
             <View style={styles.lineRow}>
               <View style={styles.lineInputWrap}>
@@ -1386,7 +1410,7 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             </View>
             {line.disponibilidadInsuficiente ? (
               <Text style={styles.inventoryWarning}>
-                Inventario insuficiente para {line.codigo} - {line.nombre} usando {tipoComprobante === 10 ? 'Inv. CMB' : 'Inv. SA'}. Puedes agregarlo al pedido, pero queda advertido.
+                Inventario insuficiente para {line.codigo} - {line.nombre} usando {getInventarioSourceLabel()}. Puedes agregarlo al pedido, pero queda advertido.
               </Text>
             ) : null}
           </View>
@@ -1457,21 +1481,30 @@ export function SalesOrderFormScreen({ onCreated, orderId }: SalesOrderFormScree
             placeholder="Buscar por código o nombre"
           />
           <ScrollView>
-            {productosFiltrados.map((producto) => (
-              <Pressable key={producto.id} style={styles.modalItem} onPress={() => addProduct(producto)}>
-                <Text style={styles.modalItemTitle}>{producto.codigo}</Text>
-                <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
-                <Text style={styles.modalItemPrice}>{formatMoney(resolveProductoPrice(producto))}</Text>
-                <Text style={styles.modalItemMeta}>
-                  Inv. disponible: {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante)} | SA: {producto.inventario_sa ?? 0} | Fisico: {producto.inventario_cmb ?? 0}
-                </Text>
-                {getInventarioDisponible(producto.inventario_sa ?? null, producto.inventario_cmb ?? null, tipoComprobante) <= 0 ? (
-                  <Text style={styles.inventoryWarning}>
-                    Inventario insuficiente para {producto.codigo} - {producto.nombre || 'Sin nombre'} usando {tipoComprobante === 10 ? 'Inv. CMB' : 'Inv. SA'}.
+            {productosFiltrados.map((producto) => {
+              const productoInventarioDisponible = getInventarioDisponible(
+                producto.inventario_sa ?? null,
+                producto.inventario_cmb ?? null,
+                tipoComprobante,
+                producto.cantidad_negativa_ml ?? null,
+              );
+
+              return (
+                <Pressable key={producto.id} style={styles.modalItem} onPress={() => addProduct(producto)}>
+                  <Text style={styles.modalItemTitle}>{producto.codigo}</Text>
+                  <Text style={styles.modalItemSubtitle}>{producto.nombre || 'Sin nombre'}</Text>
+                  <Text style={styles.modalItemPrice}>{formatMoney(resolveProductoPrice(producto))}</Text>
+                  <Text style={styles.modalItemMeta}>
+                    Inv. disponible: {productoInventarioDisponible} | ML: {producto.cantidad_negativa_ml ?? 0} | SA: {producto.inventario_sa ?? 0} | Fisico: {producto.inventario_cmb ?? 0}
                   </Text>
-                ) : null}
-              </Pressable>
-            ))}
+                  {productoInventarioDisponible <= 0 ? (
+                    <Text style={styles.inventoryWarning}>
+                      Inventario insuficiente para {producto.codigo} - {producto.nombre || 'Sin nombre'} usando {getInventarioSourceLabel()}.
+                    </Text>
+                  ) : null}
+                </Pressable>
+              );
+            })}
           </ScrollView>
           <Pressable style={styles.modalCloseButton} onPress={() => setProductoModalOpen(false)}>
             <Text style={styles.modalCloseLabel}>Cerrar</Text>
