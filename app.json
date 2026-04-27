@@ -2,7 +2,7 @@
   "expo": {
     "name": "Montblan",
     "slug": "montblan-mobile",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -12,11 +12,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "buildNumber": "5",
+      "buildNumber": "6",
       "supportsTablet": true
     },
     "android": {
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
