@@ -15,15 +15,15 @@ type OrderCardProps = {
   showEvidenceIndicator?: boolean;
 };
 
-export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false }: OrderCardProps) {
+export function OrderCard({ order, mode: _mode, onPress, showEvidenceIndicator = false }: OrderCardProps) {
   const isFinished = order.status === 50;
   const isCanceled = Boolean(order.is_canceled_effective) || order.status === 1 || Boolean(order.documento_cancelado);
-  const canViewSpecialPrice = Boolean(order.can_view_special_price);
-  const visualTone = isCanceled
+  const canViewOrderMarkers = Boolean(order.can_view_special_price);
+  const visualTone = canViewOrderMarkers && isCanceled
     ? 'canceled'
-    : canViewSpecialPrice && order.venta_especial
+    : canViewOrderMarkers && order.venta_especial
       ? 'special'
-      : order.es_mercado_libre
+      : canViewOrderMarkers && order.es_mercado_libre
         ? 'mercadoLibre'
         : isFinished
           ? 'finished'
@@ -36,15 +36,9 @@ export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false 
   const hasEvidence = Boolean(order.has_evidence);
   const inventoryFeedback = order.inventory_feedback ?? [];
   const visibleInventoryFeedback = inventoryFeedback.slice(0, 2);
-  const subtotal = mode === 'sales'
-    ? Number(order.subtotal_captura_signed ?? order.subtotal_signed ?? order.subtotal_captura ?? order.subtotal)
-    : Number(order.subtotal_signed ?? order.subtotal);
-  const iva = mode === 'sales'
-    ? Number(order.iva_captura_signed ?? order.iva_signed ?? order.iva_captura ?? order.iva)
-    : Number(order.iva_signed ?? order.iva);
-  const total = mode === 'sales'
-    ? Number(order.total_captura_signed ?? order.total_signed ?? order.total_captura ?? order.total)
-    : Number(order.total_signed ?? order.total);
+  const subtotal = Number(order.subtotal_captura_signed ?? order.subtotal_signed ?? order.subtotal_captura ?? order.subtotal);
+  const iva = Number(order.iva_captura_signed ?? order.iva_signed ?? order.iva_captura ?? order.iva);
+  const total = Number(order.total_captura_signed ?? order.total_signed ?? order.total_captura ?? order.total);
 
   return (
     <Pressable
@@ -65,9 +59,9 @@ export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false 
             tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
-          {canViewSpecialPrice && order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
-          {order.es_mercado_libre ? <StatusBadge label={mercadoLibreLabel} tone="mercadoLibre" /> : null}
-          {isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
+          {canViewOrderMarkers && order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
+          {canViewOrderMarkers && order.es_mercado_libre ? <StatusBadge label={mercadoLibreLabel} tone="mercadoLibre" /> : null}
+          {canViewOrderMarkers && isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
         </View>
       </View>
 

@@ -215,25 +215,23 @@ export function OrderDetailScreen({
     () => Boolean(order?.can_view_special_price),
     [order?.can_view_special_price],
   );
-  const showCaptureAmounts = mode === 'sales';
-  const displaySubtotal = showCaptureAmounts
-    ? Number(order?.subtotal_captura_signed ?? order?.subtotal_signed ?? order?.subtotal_captura ?? order?.subtotal ?? 0)
-    : Number(order?.subtotal_signed ?? order?.subtotal ?? 0);
-  const displayIva = showCaptureAmounts
-    ? Number(order?.iva_captura_signed ?? order?.iva_signed ?? order?.iva_captura ?? order?.iva ?? 0)
-    : Number(order?.iva_signed ?? order?.iva ?? 0);
-  const displayTotal = showCaptureAmounts
-    ? Number(order?.total_captura_signed ?? order?.total_signed ?? order?.total_captura ?? order?.total ?? 0)
-    : Number(order?.total_signed ?? order?.total ?? 0);
-  const showCaptureReference = useMemo(() => {
-    if (!order || showCaptureAmounts) {
+  const canViewOrderMarkers = canViewSpecialPrice;
+  const mercadoLibreLabel = order?.es_ml_facturacion ? 'ML FACTURACION' : 'MERCADO LIBRE';
+  const originalSubtotal = Number(order?.subtotal_captura_signed ?? order?.subtotal_captura ?? order?.subtotal_signed ?? order?.subtotal ?? 0);
+  const originalIva = Number(order?.iva_captura_signed ?? order?.iva_captura ?? order?.iva_signed ?? order?.iva ?? 0);
+  const originalTotal = Number(order?.total_captura_signed ?? order?.total_captura ?? order?.total_signed ?? order?.total ?? 0);
+  const finalSubtotal = Number(order?.subtotal_signed ?? order?.subtotal ?? originalSubtotal);
+  const finalIva = Number(order?.iva_signed ?? order?.iva ?? originalIva);
+  const finalTotal = Number(order?.total_signed ?? order?.total ?? originalTotal);
+  const canCompareSpecialAmounts = useMemo(() => {
+    if (!order || !canViewSpecialPrice || !order.venta_especial) {
       return false;
     }
 
     return Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
       || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
       || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
-  }, [order, showCaptureAmounts]);
+  }, [canViewSpecialPrice, order]);
 
   const sendToAuthorization = async () => {
     if (!token || !order || isSending) {
@@ -347,10 +345,10 @@ export function OrderDetailScreen({
             tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
-          {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="mercadoLibre" /> : null}
-          {order.origen_ml ? <StatusBadge label="DERIVADO ML" tone="default" /> : null}
-          {canViewSpecialPrice && order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
-          {order.status !== 1 && order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
+          {canViewOrderMarkers && order.es_mercado_libre ? <StatusBadge label={mercadoLibreLabel} tone="mercadoLibre" /> : null}
+          {canViewOrderMarkers && order.origen_ml ? <StatusBadge label="DERIVADO ML" tone="default" /> : null}
+          {canViewOrderMarkers && order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
+          {canViewOrderMarkers && order.status !== 1 && order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {showWarehouseStatusBadge ? <StatusBadge label={order.almacen_status || ''} tone="warning" /> : null}
         </View>
 
@@ -367,27 +365,45 @@ export function OrderDetailScreen({
           </Text>
         ) : null}
         {order.inventario_preafectado ? <Text style={styles.meta}>Inventario preafectado: Sí</Text> : null}
-        {canViewSpecialPrice && order.venta_especial ? <Text style={styles.meta}>Venta especial aplicada: Sí</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
-        <View style={styles.amountsRow}>
-          <View style={styles.amountItem}>
-            <Text style={styles.amountLabel}>Subtotal</Text>
-            <Text style={styles.amountValue}>{formatMoney(displaySubtotal)}</Text>
-          </View>
-          <View style={styles.amountItem}>
-            <Text style={styles.amountLabel}>IVA</Text>
-            <Text style={styles.amountValue}>{formatMoney(displayIva)}</Text>
-          </View>
-          <View style={styles.amountItem}>
-            <Text style={styles.amountLabel}>Total</Text>
-            <Text style={styles.amountValue}>{formatMoney(displayTotal)}</Text>
+        <View style={styles.amountSection}>
+          <Text style={styles.amountSectionTitle}>
+            {canCompareSpecialAmounts ? 'Importe original del pedido' : 'Importe del pedido'}
+          </Text>
+          <View style={styles.amountsRow}>
+            <View style={styles.amountItem}>
+              <Text style={styles.amountLabel}>Subtotal</Text>
+              <Text style={styles.amountValue}>{formatMoney(originalSubtotal)}</Text>
+            </View>
+            <View style={styles.amountItem}>
+              <Text style={styles.amountLabel}>IVA</Text>
+              <Text style={styles.amountValue}>{formatMoney(originalIva)}</Text>
+            </View>
+            <View style={styles.amountItem}>
+              <Text style={styles.amountLabel}>Total</Text>
+              <Text style={styles.amountValue}>{formatMoney(originalTotal)}</Text>
+            </View>
           </View>
         </View>
-        {showCaptureReference ? (
-          <Text style={styles.captureReference}>
-            Captura original: Subtotal {formatMoney(Number(order.subtotal_captura_signed ?? order.subtotal_captura ?? 0))} | IVA {formatMoney(Number(order.iva_captura_signed ?? order.iva_captura ?? 0))} | Total {formatMoney(Number(order.total_captura_signed ?? order.total_captura ?? 0))}
-          </Text>
+        {canCompareSpecialAmounts ? (
+          <View style={styles.amountSectionSecondary}>
+            <Text style={styles.amountSectionTitle}>Importe final del pedido</Text>
+            <View style={styles.amountsRow}>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Subtotal</Text>
+                <Text style={styles.amountValue}>{formatMoney(finalSubtotal)}</Text>
+              </View>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>IVA</Text>
+                <Text style={styles.amountValue}>{formatMoney(finalIva)}</Text>
+              </View>
+              <View style={styles.amountItem}>
+                <Text style={styles.amountLabel}>Total</Text>
+                <Text style={styles.amountValue}>{formatMoney(finalTotal)}</Text>
+              </View>
+            </View>
+          </View>
         ) : null}
       </View>
 
@@ -526,7 +542,15 @@ export function OrderDetailScreen({
             <View key={line.id} style={styles.lineCard}>
               <View style={styles.lineTopRow}>
                 <Text style={styles.lineCode}>{line.codigo || 'SIN CÓDIGO'}</Text>
-                <Text style={styles.lineAmount}>{formatMoney(line.importe)}</Text>
+                <Text style={styles.lineAmount}>
+                  {formatMoney(
+                    (() => {
+                      const cantidadFacturable = Number(line.surtido && line.surtido > 0 ? line.surtido : line.cantidad);
+                      const precioOriginal = Number(line.precio_base ?? line.precio ?? 0);
+                      return cantidadFacturable * precioOriginal;
+                    })(),
+                  )}
+                </Text>
               </View>
               <Text style={styles.lineDesc}>{line.descripcion || line.codigo || 'Producto sin nombre'}</Text>
               <Text style={styles.metaRow}>
@@ -535,10 +559,18 @@ export function OrderDetailScreen({
               <Text style={styles.metaRow}>
                 Rollos: {formatWholeNumber(line.rollo)} | Inventario: {line.inventario_disponible ?? '-'}
               </Text>
-              {canViewSpecialPrice && order.venta_especial && line.precio_especial != null ? (
-                <Text style={styles.metaRow}>
-                  Precio base: {formatMoney(line.precio_base ?? line.precio)} | Especial: {formatMoney(line.precio_especial)}
-                </Text>
+              <Text style={styles.metaRow}>
+                Precio original: {formatMoney(Number(line.precio_base ?? line.precio ?? 0))}
+              </Text>
+              {canCompareSpecialAmounts && line.precio_especial != null ? (
+                <>
+                  <Text style={styles.metaRow}>
+                    Precio final: {formatMoney(Number(line.precio_especial))}
+                  </Text>
+                  <Text style={styles.metaRow}>
+                    Importe final: {formatMoney(Number(line.importe ?? 0))}
+                  </Text>
+                </>
               ) : null}
             </View>
           ))
@@ -659,6 +691,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 2,
   },
+  amountSection: {
+    marginTop: 12,
+  },
+  amountSectionSecondary: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#e4edf2',
+  },
+  amountSectionTitle: {
+    color: palette.mutedText,
+    fontFamily: typography.semiBold,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   amountsRow: {
     marginTop: 12,
     flexDirection: 'row',
@@ -683,13 +731,6 @@ const styles = StyleSheet.create({
     color: palette.primaryDark,
     fontFamily: typography.semiBold,
     fontSize: 14,
-  },
-  captureReference: {
-    marginTop: 10,
-    color: palette.mutedText,
-    fontFamily: typography.regular,
-    fontSize: 12,
-    lineHeight: 18,
   },
   sectionCard: {
     backgroundColor: palette.card,

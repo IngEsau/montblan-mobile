@@ -297,18 +297,39 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
 
     return warehouseTotalFaltante <= 0 && (order?.detalle || []).length > 0;
   }, [order?.detalle, order?.warehouse_fully_supplied, warehouseTotalFaltante]);
-  const displaySubtotal = useMemo(
-    () => Number(order?.subtotal_signed ?? order?.subtotal ?? 0),
-    [order?.subtotal, order?.subtotal_signed],
+  const originalSubtotal = useMemo(
+    () => Number(order?.subtotal_captura_signed ?? order?.subtotal_captura ?? order?.subtotal_signed ?? order?.subtotal ?? 0),
+    [order?.subtotal, order?.subtotal_captura, order?.subtotal_captura_signed, order?.subtotal_signed],
   );
-  const displayIva = useMemo(
-    () => Number(order?.iva_signed ?? order?.iva ?? 0),
-    [order?.iva, order?.iva_signed],
+  const originalIva = useMemo(
+    () => Number(order?.iva_captura_signed ?? order?.iva_captura ?? order?.iva_signed ?? order?.iva ?? 0),
+    [order?.iva, order?.iva_captura, order?.iva_captura_signed, order?.iva_signed],
   );
-  const displayTotal = useMemo(
-    () => Number(order?.total_signed ?? order?.total ?? 0),
-    [order?.total, order?.total_signed],
+  const originalTotal = useMemo(
+    () => Number(order?.total_captura_signed ?? order?.total_captura ?? order?.total_signed ?? order?.total ?? 0),
+    [order?.total, order?.total_captura, order?.total_captura_signed, order?.total_signed],
   );
+  const finalSubtotal = useMemo(
+    () => Number(order?.subtotal_signed ?? order?.subtotal ?? originalSubtotal),
+    [order?.subtotal, order?.subtotal_signed, originalSubtotal],
+  );
+  const finalIva = useMemo(
+    () => Number(order?.iva_signed ?? order?.iva ?? originalIva),
+    [order?.iva, order?.iva_signed, originalIva],
+  );
+  const finalTotal = useMemo(
+    () => Number(order?.total_signed ?? order?.total ?? originalTotal),
+    [order?.total, order?.total_signed, originalTotal],
+  );
+  const canCompareSpecialAmounts = useMemo(() => {
+    if (!ventaEspecialAplicada || !order) {
+      return false;
+    }
+
+    return Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
+      || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
+      || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
+  }, [order, ventaEspecialAplicada]);
   const canViewEvidence = useMemo(
     () => Boolean(order?.can_view_evidence ?? order?.can_upload_evidence ?? false),
     [order?.can_upload_evidence, order?.can_view_evidence],
@@ -1013,20 +1034,31 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
           ) : null}
         </View>
 
+        <Text style={styles.amountSectionTitle}>
+          {canCompareSpecialAmounts ? 'Importe original del pedido' : 'Importe del pedido'}
+        </Text>
         <View style={styles.amountsRow}>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>Subtotal</Text>
-            <Text style={styles.amountValue}>{formatMoney(displaySubtotal)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(originalSubtotal)}</Text>
           </View>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>IVA</Text>
-            <Text style={styles.amountValue}>{formatMoney(displayIva)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(originalIva)}</Text>
           </View>
           <View style={styles.amountItem}>
             <Text style={styles.amountLabel}>Total</Text>
-            <Text style={styles.amountValue}>{formatMoney(displayTotal)}</Text>
+            <Text style={styles.amountValue}>{formatMoney(originalTotal)}</Text>
           </View>
         </View>
+        {canCompareSpecialAmounts ? (
+          <View style={styles.previewCard}>
+            <Text style={styles.previewLabel}>Importe final del pedido</Text>
+            <Text style={styles.previewValue}>
+              Subtotal: {formatMoney(finalSubtotal)} | IVA: {formatMoney(finalIva)} | Total: {formatMoney(finalTotal)}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.summaryGrid}>
           <View style={styles.summaryCell}>
@@ -1983,6 +2015,13 @@ const styles = StyleSheet.create({
     color: palette.mutedText,
     fontFamily: typography.regular,
     fontSize: 12,
+  },
+  amountSectionTitle: {
+    color: palette.mutedText,
+    fontFamily: typography.semiBold,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   amountsRow: {
     flexDirection: 'row',

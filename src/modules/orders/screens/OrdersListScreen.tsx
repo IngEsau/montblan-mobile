@@ -171,20 +171,13 @@ export function OrdersListScreen({
   );
 
   const kpiSummary = useMemo(
-    () => (mode === 'sales'
-      ? {
-          title: 'Totales de captura',
-          subtotal: summary.captureSubtotal,
-          iva: summary.captureIva,
-          total: summary.captureTotal,
-        }
-      : {
-          title: 'Totales operativos',
-          subtotal: summary.subtotal,
-          iva: summary.iva,
-          total: summary.total,
-        }),
-    [mode, summary.captureIva, summary.captureSubtotal, summary.captureTotal, summary.iva, summary.subtotal, summary.total],
+    () => ({
+      title: 'Importes originales del filtro',
+      subtotal: summary.captureSubtotal,
+      iva: summary.captureIva,
+      total: summary.captureTotal,
+    }),
+    [summary.captureIva, summary.captureSubtotal, summary.captureTotal],
   );
   const shouldShowKpi = useMemo(
     () => !(mode === 'warehouse' && resolvedModes.length === 1 && resolvedModes[0] === 'warehouse'),
