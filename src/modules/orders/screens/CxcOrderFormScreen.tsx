@@ -1035,9 +1035,9 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Contexto del pedido</Text>
         <View style={styles.noteRow}>
-          <Text style={styles.noteLabel}>Precio especial</Text>
+          <Text style={styles.noteLabel}>Venta especial</Text>
           <Text style={styles.noteValue}>
-            {ventaEspecialAplicada ? 'Sí (precio promedio + 3%)' : 'No aplicado'}
+            {ventaEspecialAplicada ? 'Aplicada' : 'No aplicada'}
           </Text>
         </View>
         {isPostfechado ? (
@@ -1264,7 +1264,7 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
               <Text style={styles.cardTitle}>Precio especial</Text>
               <Text style={styles.hint}>
                 {canApplySpecialPrice
-                  ? 'CXC puede aplicar o retirar precio especial en FACTURACION usando la regla precio promedio + 3%.'
+                  ? 'CXC puede aplicar o retirar precio especial en FACTURACION. Esta marca solo es visible para CXC y administración.'
                   : 'Este cliente ya pertenece al catálogo. Solo se permite retirar un precio especial que ya estuviera aplicado anteriormente.'}
               </Text>
               <View style={styles.summaryGrid}>
@@ -1275,8 +1275,8 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
                   </Text>
                 </View>
                 <View style={styles.summaryCell}>
-                  <Text style={styles.summaryLabel}>Regla</Text>
-                  <Text style={styles.summaryValue}>Precio promedio + 3%</Text>
+                  <Text style={styles.summaryLabel}>Disponibilidad</Text>
+                  <Text style={styles.summaryValue}>{canApplySpecialPrice ? 'Cliente temporal' : 'Solo retiro'}</Text>
                 </View>
               </View>
               <Pressable

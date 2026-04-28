@@ -211,6 +211,10 @@ export function OrderDetailScreen({
     () => Boolean(order?.almacen_status) && order?.status === 30,
     [order?.almacen_status, order?.status],
   );
+  const canViewSpecialPrice = useMemo(
+    () => Boolean(order?.can_view_special_price),
+    [order?.can_view_special_price],
+  );
   const showCaptureAmounts = mode === 'sales';
   const displaySubtotal = showCaptureAmounts
     ? Number(order?.subtotal_captura_signed ?? order?.subtotal_signed ?? order?.subtotal_captura ?? order?.subtotal ?? 0)
@@ -345,7 +349,7 @@ export function OrderDetailScreen({
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
           {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="mercadoLibre" /> : null}
           {order.origen_ml ? <StatusBadge label="DERIVADO ML" tone="default" /> : null}
-          {order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
+          {canViewSpecialPrice && order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
           {order.status !== 1 && order.documento_cancelado ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
           {showWarehouseStatusBadge ? <StatusBadge label={order.almacen_status || ''} tone="warning" /> : null}
         </View>
@@ -363,7 +367,7 @@ export function OrderDetailScreen({
           </Text>
         ) : null}
         {order.inventario_preafectado ? <Text style={styles.meta}>Inventario preafectado: Sí</Text> : null}
-        {order.venta_especial ? <Text style={styles.meta}>Precio especial aplicado: Sí (precio promedio + 3%)</Text> : null}
+        {canViewSpecialPrice && order.venta_especial ? <Text style={styles.meta}>Venta especial aplicada: Sí</Text> : null}
         <Text style={styles.meta}>Vendedor: {order.vendedor || '-'}</Text>
 
         <View style={styles.amountsRow}>
@@ -531,7 +535,7 @@ export function OrderDetailScreen({
               <Text style={styles.metaRow}>
                 Rollos: {formatWholeNumber(line.rollo)} | Inventario: {line.inventario_disponible ?? '-'}
               </Text>
-              {order.venta_especial && line.precio_especial != null ? (
+              {canViewSpecialPrice && order.venta_especial && line.precio_especial != null ? (
                 <Text style={styles.metaRow}>
                   Precio base: {formatMoney(line.precio_base ?? line.precio)} | Especial: {formatMoney(line.precio_especial)}
                 </Text>

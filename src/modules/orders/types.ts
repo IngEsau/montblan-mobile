@@ -36,6 +36,7 @@ export type PedidoListItem = {
   can_view_evidence?: boolean;
   can_manage_evidence?: boolean;
   has_evidence?: boolean;
+  can_view_special_price?: boolean;
   venta_especial?: boolean;
   inventory_feedback?: PedidoInventoryFeedbackItem[];
   is_canceled_effective?: boolean;
@@ -147,6 +148,7 @@ export type Pedido = PedidoListItem & {
   documento_cancelado_by_username?: string | null;
   can_view_evidence?: boolean;
   can_manage_evidence?: boolean;
+  can_view_special_price?: boolean;
   evidence_max_file_size_bytes?: number | null;
   evidence_max_file_size_label?: string | null;
   can_upload_evidence?: boolean;
