@@ -32,9 +32,9 @@ Metadatos relevantes definidos en [`app.json`](app.json):
 
 - nombre: `Montblan`
 - slug: `montblan-mobile`
-- versión: `1.4.0`
-- iOS `buildNumber`: `5`
-- Android `versionCode`: `5`
+- versión: `1.6.0`
+- iOS `buildNumber`: `7`
+- Android `versionCode`: `7`
 - package Android: `com.lerco.montblan`
 
 Perfiles EAS definidos en [`eas.json`](eas.json):
