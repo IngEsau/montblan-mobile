@@ -19,6 +19,15 @@ export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false 
   const isFinished = order.status === 50;
   const isCanceled = Boolean(order.is_canceled_effective) || order.status === 1 || Boolean(order.documento_cancelado);
   const canViewSpecialPrice = Boolean(order.can_view_special_price);
+  const visualTone = isCanceled
+    ? 'canceled'
+    : canViewSpecialPrice && order.venta_especial
+      ? 'special'
+      : order.es_mercado_libre
+        ? 'mercadoLibre'
+        : isFinished
+          ? 'finished'
+          : 'default';
   const primaryStatusLabel = resolveOrderStatusLabel(order.status, order.status_label, order.is_standby);
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
@@ -38,7 +47,16 @@ export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false 
     : Number(order.total_signed ?? order.total);
 
   return (
-    <Pressable style={[styles.card, isFinished && styles.cardFinished, isCanceled && styles.cardCanceled]} onPress={onPress}>
+    <Pressable
+      style={[
+        styles.card,
+        visualTone === 'finished' && styles.cardFinished,
+        visualTone === 'special' && styles.cardSpecial,
+        visualTone === 'mercadoLibre' && styles.cardMercadoLibre,
+        visualTone === 'canceled' && styles.cardCanceled,
+      ]}
+      onPress={onPress}
+    >
       <View style={styles.topRow}>
         <Text style={styles.orderNumber}>Pedido #{order.no_pedido || order.id}</Text>
         <View style={styles.badgesGroup}>
@@ -118,6 +136,14 @@ const styles = StyleSheet.create({
   cardFinished: {
     borderColor: '#ccecdf',
     backgroundColor: '#f7fcfa',
+  },
+  cardSpecial: {
+    borderColor: '#c7def3',
+    backgroundColor: '#f3f9ff',
+  },
+  cardMercadoLibre: {
+    borderColor: '#f0dca5',
+    backgroundColor: '#fff9eb',
   },
   cardCanceled: {
     borderColor: '#f3c6cf',

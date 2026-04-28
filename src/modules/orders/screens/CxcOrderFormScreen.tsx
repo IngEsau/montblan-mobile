@@ -94,6 +94,10 @@ function normalizeIntegerInput(value: string) {
   return value.replace(/[^\d]/g, '');
 }
 
+function isDigitsOnly(value: string) {
+  return /^\d+$/.test(value);
+}
+
 function normalizeWholeNumberValue(value: number | null | undefined) {
   if (value === null || typeof value === 'undefined' || Number.isNaN(Number(value))) {
     return '0';
@@ -355,8 +359,8 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       setOrder(item);
       setMlAdjustmentLines(item.detalle.map(buildMlAdjustmentLine));
       setMlSplitLines(item.detalle.map(buildMlSplitLine));
-      setNoPedidoInput(item.no_pedido || '');
-      setNoFacturaInput(item.no_factura || '');
+      setNoPedidoInput(normalizeIntegerInput(item.no_pedido || ''));
+      setNoFacturaInput(normalizeIntegerInput(item.no_factura || ''));
       setSplitNoClienteInput('');
       setSplitRazonSocialInput('');
       setSplitSellerId(null);
@@ -444,6 +448,10 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
       setErrorMessage('Debes capturar el número de documento.');
       return;
     }
+    if (!isDigitsOnly(numero)) {
+      setErrorMessage('El documento final solo acepta números.');
+      return;
+    }
 
     setIsBusy(true);
     setErrorMessage(null);
@@ -469,6 +477,10 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     const numero = noPedidoInput.trim();
     if (!numero) {
       setErrorMessage('Debes capturar el número de pedido.');
+      return;
+    }
+    if (!isDigitsOnly(numero)) {
+      setErrorMessage('El número de pedido solo acepta números.');
       return;
     }
 
@@ -1116,8 +1128,10 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
             <TextInput
               placeholderTextColor={palette.mutedText}
               value={noPedidoInput}
-              onChangeText={setNoPedidoInput}
+              onChangeText={(value) => setNoPedidoInput(normalizeIntegerInput(value))}
               style={styles.input}
+              keyboardType="number-pad"
+              maxLength={50}
               placeholder="Captura el número de pedido"
             />
             <Pressable style={styles.secondaryButton} onPress={saveNoPedido} disabled={isBusy}>
@@ -1239,8 +1253,10 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
             <TextInput
               placeholderTextColor={palette.mutedText}
               value={noFacturaInput}
-              onChangeText={setNoFacturaInput}
+              onChangeText={(value) => setNoFacturaInput(normalizeIntegerInput(value))}
               style={styles.input}
+              keyboardType="number-pad"
+              maxLength={50}
               placeholder={isFactura ? 'Ingrese el número de factura' : 'Ingrese el número de remisión'}
             />
             <Text style={styles.hint}>
