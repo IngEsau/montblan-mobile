@@ -23,6 +23,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { ordersApi } from '../services/ordersApi';
 import { Pedido, PedidoEvidenciaItem } from '../types';
 import { OrderMode } from '../../../navigation/types';
+import { buildPedidoSpecialPriceComparison } from '../utils/specialPriceComparison';
 import { resolveOrderStatusLabel, resolveOrderStatusTone } from '../utils/status';
 
 type OrderDetailScreenProps = {
@@ -217,23 +218,33 @@ export function OrderDetailScreen({
   );
   const canViewOrderMarkers = canViewSpecialPrice;
   const mercadoLibreLabel = order?.es_ml_facturacion ? 'ML FACTURACION' : 'MERCADO LIBRE';
-  const originalSubtotal = Number(order?.subtotal_captura_signed ?? order?.subtotal_captura ?? order?.subtotal_signed ?? order?.subtotal ?? 0);
-  const originalIva = Number(order?.iva_captura_signed ?? order?.iva_captura ?? order?.iva_signed ?? order?.iva ?? 0);
-  const originalTotal = Number(order?.total_captura_signed ?? order?.total_captura ?? order?.total_signed ?? order?.total ?? 0);
-  const finalSubtotal = Number(order?.subtotal_signed ?? order?.subtotal ?? originalSubtotal);
-  const finalIva = Number(order?.iva_signed ?? order?.iva ?? originalIva);
-  const finalTotal = Number(order?.total_signed ?? order?.total ?? originalTotal);
+  const specialPriceComparison = useMemo(
+    () => buildPedidoSpecialPriceComparison(order),
+    [order],
+  );
+  const originalSubtotal = specialPriceComparison?.originalSubtotal
+    ?? Number(order?.subtotal_captura_signed ?? order?.subtotal_captura ?? order?.subtotal_signed ?? order?.subtotal ?? 0);
+  const originalIva = specialPriceComparison?.originalIva
+    ?? Number(order?.iva_captura_signed ?? order?.iva_captura ?? order?.iva_signed ?? order?.iva ?? 0);
+  const originalTotal = specialPriceComparison?.originalTotal
+    ?? Number(order?.total_captura_signed ?? order?.total_captura ?? order?.total_signed ?? order?.total ?? 0);
+  const finalSubtotal = specialPriceComparison?.finalSubtotal
+    ?? Number(order?.subtotal_signed ?? order?.subtotal ?? originalSubtotal);
+  const finalIva = specialPriceComparison?.finalIva
+    ?? Number(order?.iva_signed ?? order?.iva ?? originalIva);
+  const finalTotal = specialPriceComparison?.finalTotal
+    ?? Number(order?.total_signed ?? order?.total ?? originalTotal);
   const canCompareSpecialAmounts = useMemo(() => {
     if (!order || !canViewSpecialPrice) {
       return false;
     }
 
-    const hasAmountDelta = Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
-      || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
-      || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
+    const hasAmountDelta = Math.abs(finalTotal - originalTotal) > 0.0001
+      || Math.abs(finalSubtotal - originalSubtotal) > 0.0001
+      || Math.abs(finalIva - originalIva) > 0.0001;
 
     return Boolean(order.venta_especial) || hasAmountDelta;
-  }, [canViewSpecialPrice, order]);
+  }, [canViewSpecialPrice, finalIva, finalSubtotal, finalTotal, order, originalIva, originalSubtotal, originalTotal]);
 
   const sendToAuthorization = async () => {
     if (!token || !order || isSending) {

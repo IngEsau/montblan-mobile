@@ -21,6 +21,7 @@ import { EvidenceSection } from '../components/EvidenceSection';
 import { ordersApi } from '../services/ordersApi';
 import { Pedido, PedidoDetalleLinea, PedidoEvidenciaItem, PedidoMlAssignableSeller } from '../types';
 import { downloadEvidence, previewEvidence } from '../utils/evidence';
+import { buildPedidoSpecialPriceComparison } from '../utils/specialPriceComparison';
 import { resolveOrderStageLabel } from '../utils/status';
 
 const SERVICIO_ML_CLIENT_CODE = '9009';
@@ -297,41 +298,51 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
 
     return warehouseTotalFaltante <= 0 && (order?.detalle || []).length > 0;
   }, [order?.detalle, order?.warehouse_fully_supplied, warehouseTotalFaltante]);
+  const specialPriceComparison = useMemo(
+    () => buildPedidoSpecialPriceComparison(order),
+    [order],
+  );
   const originalSubtotal = useMemo(
-    () => Number(order?.subtotal_captura_signed ?? order?.subtotal_captura ?? order?.subtotal_signed ?? order?.subtotal ?? 0),
-    [order?.subtotal, order?.subtotal_captura, order?.subtotal_captura_signed, order?.subtotal_signed],
+    () => specialPriceComparison?.originalSubtotal
+      ?? Number(order?.subtotal_captura_signed ?? order?.subtotal_captura ?? order?.subtotal_signed ?? order?.subtotal ?? 0),
+    [order?.subtotal, order?.subtotal_captura, order?.subtotal_captura_signed, order?.subtotal_signed, specialPriceComparison?.originalSubtotal],
   );
   const originalIva = useMemo(
-    () => Number(order?.iva_captura_signed ?? order?.iva_captura ?? order?.iva_signed ?? order?.iva ?? 0),
-    [order?.iva, order?.iva_captura, order?.iva_captura_signed, order?.iva_signed],
+    () => specialPriceComparison?.originalIva
+      ?? Number(order?.iva_captura_signed ?? order?.iva_captura ?? order?.iva_signed ?? order?.iva ?? 0),
+    [order?.iva, order?.iva_captura, order?.iva_captura_signed, order?.iva_signed, specialPriceComparison?.originalIva],
   );
   const originalTotal = useMemo(
-    () => Number(order?.total_captura_signed ?? order?.total_captura ?? order?.total_signed ?? order?.total ?? 0),
-    [order?.total, order?.total_captura, order?.total_captura_signed, order?.total_signed],
+    () => specialPriceComparison?.originalTotal
+      ?? Number(order?.total_captura_signed ?? order?.total_captura ?? order?.total_signed ?? order?.total ?? 0),
+    [order?.total, order?.total_captura, order?.total_captura_signed, order?.total_signed, specialPriceComparison?.originalTotal],
   );
   const finalSubtotal = useMemo(
-    () => Number(order?.subtotal_signed ?? order?.subtotal ?? originalSubtotal),
-    [order?.subtotal, order?.subtotal_signed, originalSubtotal],
+    () => specialPriceComparison?.finalSubtotal
+      ?? Number(order?.subtotal_signed ?? order?.subtotal ?? originalSubtotal),
+    [order?.subtotal, order?.subtotal_signed, originalSubtotal, specialPriceComparison?.finalSubtotal],
   );
   const finalIva = useMemo(
-    () => Number(order?.iva_signed ?? order?.iva ?? originalIva),
-    [order?.iva, order?.iva_signed, originalIva],
+    () => specialPriceComparison?.finalIva
+      ?? Number(order?.iva_signed ?? order?.iva ?? originalIva),
+    [order?.iva, order?.iva_signed, originalIva, specialPriceComparison?.finalIva],
   );
   const finalTotal = useMemo(
-    () => Number(order?.total_signed ?? order?.total ?? originalTotal),
-    [order?.total, order?.total_signed, originalTotal],
+    () => specialPriceComparison?.finalTotal
+      ?? Number(order?.total_signed ?? order?.total ?? originalTotal),
+    [order?.total, order?.total_signed, originalTotal, specialPriceComparison?.finalTotal],
   );
   const canCompareSpecialAmounts = useMemo(() => {
     if (!order) {
       return false;
     }
 
-    const hasAmountDelta = Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
-      || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
-      || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
+    const hasAmountDelta = Math.abs(finalTotal - originalTotal) > 0.0001
+      || Math.abs(finalSubtotal - originalSubtotal) > 0.0001
+      || Math.abs(finalIva - originalIva) > 0.0001;
 
     return ventaEspecialAplicada || hasAmountDelta;
-  }, [order, ventaEspecialAplicada]);
+  }, [finalIva, finalSubtotal, finalTotal, order, originalIva, originalSubtotal, originalTotal, ventaEspecialAplicada]);
   const canViewEvidence = useMemo(
     () => Boolean(order?.can_view_evidence ?? order?.can_upload_evidence ?? false),
     [order?.can_upload_evidence, order?.can_view_evidence],
