@@ -1262,21 +1262,12 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
           {shouldShowSpecialPriceSection ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Precio especial</Text>
-              <Text style={styles.hint}>
-                {canApplySpecialPrice
-                  ? 'CXC puede aplicar o retirar precio especial en FACTURACION. Esta marca solo es visible para CXC y administración.'
-                  : 'Este cliente ya pertenece al catálogo. Solo se permite retirar un precio especial que ya estuviera aplicado anteriormente.'}
-              </Text>
               <View style={styles.summaryGrid}>
                 <View style={styles.summaryCell}>
                   <Text style={styles.summaryLabel}>Estado actual</Text>
                   <Text style={styles.summaryValue}>
                     {ventaEspecialAplicada ? 'Aplicado' : 'No aplicado'}
                   </Text>
-                </View>
-                <View style={styles.summaryCell}>
-                  <Text style={styles.summaryLabel}>Disponibilidad</Text>
-                  <Text style={styles.summaryValue}>{canApplySpecialPrice ? 'Cliente temporal' : 'Solo retiro'}</Text>
                 </View>
               </View>
               <Pressable
