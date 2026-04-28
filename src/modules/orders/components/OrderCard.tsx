@@ -18,9 +18,11 @@ type OrderCardProps = {
 export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false }: OrderCardProps) {
   const isFinished = order.status === 50;
   const isCanceled = Boolean(order.is_canceled_effective) || order.status === 1 || Boolean(order.documento_cancelado);
+  const canViewSpecialPrice = Boolean(order.can_view_special_price);
   const primaryStatusLabel = resolveOrderStatusLabel(order.status, order.status_label, order.is_standby);
   const documentLabel =
     (order.tipo_fac_rem ?? 10) === 20 ? 'Remisión SA' : 'Factura';
+  const mercadoLibreLabel = order.es_ml_facturacion ? 'ML FACTURACION' : 'MERCADO LIBRE';
   const canSeeEvidenceIndicator = Boolean(order.can_view_evidence || order.can_manage_evidence || showEvidenceIndicator);
   const hasEvidence = Boolean(order.has_evidence);
   const inventoryFeedback = order.inventory_feedback ?? [];
@@ -45,8 +47,9 @@ export function OrderCard({ order, mode, onPress, showEvidenceIndicator = false 
             tone={resolveOrderStatusTone(order.status, order.is_standby)}
           />
           {order.postfechado ? <StatusBadge label="POSTFECHADO" tone="warning" /> : null}
-          {order.es_mercado_libre ? <StatusBadge label="MERCADO LIBRE" tone="mercadoLibre" /> : null}
-          {order.status !== 1 && Boolean(order.documento_cancelado) ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
+          {canViewSpecialPrice && order.venta_especial ? <StatusBadge label="VENTA ESPECIAL" tone="primary" /> : null}
+          {order.es_mercado_libre ? <StatusBadge label={mercadoLibreLabel} tone="mercadoLibre" /> : null}
+          {isCanceled ? <StatusBadge label="CANCELADO" tone="danger" /> : null}
         </View>
       </View>
 
