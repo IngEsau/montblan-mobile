@@ -322,13 +322,15 @@ export function CxcOrderFormScreen({ orderId, onDone, onOpenDerivedOrder }: CxcO
     [order?.total, order?.total_signed, originalTotal],
   );
   const canCompareSpecialAmounts = useMemo(() => {
-    if (!ventaEspecialAplicada || !order) {
+    if (!order) {
       return false;
     }
 
-    return Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
+    const hasAmountDelta = Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
       || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
       || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
+
+    return ventaEspecialAplicada || hasAmountDelta;
   }, [order, ventaEspecialAplicada]);
   const canViewEvidence = useMemo(
     () => Boolean(order?.can_view_evidence ?? order?.can_upload_evidence ?? false),

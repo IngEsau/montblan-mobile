@@ -224,13 +224,15 @@ export function OrderDetailScreen({
   const finalIva = Number(order?.iva_signed ?? order?.iva ?? originalIva);
   const finalTotal = Number(order?.total_signed ?? order?.total ?? originalTotal);
   const canCompareSpecialAmounts = useMemo(() => {
-    if (!order || !canViewSpecialPrice || !order.venta_especial) {
+    if (!order || !canViewSpecialPrice) {
       return false;
     }
 
-    return Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
+    const hasAmountDelta = Math.abs(Number(order.total_captura || 0) - Number(order.total || 0)) > 0.0001
       || Math.abs(Number(order.subtotal_captura || 0) - Number(order.subtotal || 0)) > 0.0001
       || Math.abs(Number(order.iva_captura || 0) - Number(order.iva || 0)) > 0.0001;
+
+    return Boolean(order.venta_especial) || hasAmountDelta;
   }, [canViewSpecialPrice, order]);
 
   const sendToAuthorization = async () => {
@@ -562,10 +564,10 @@ export function OrderDetailScreen({
               <Text style={styles.metaRow}>
                 Precio original: {formatMoney(Number(line.precio_base ?? line.precio ?? 0))}
               </Text>
-              {canCompareSpecialAmounts && line.precio_especial != null ? (
+              {canCompareSpecialAmounts ? (
                 <>
                   <Text style={styles.metaRow}>
-                    Precio final: {formatMoney(Number(line.precio_especial))}
+                    Precio final: {formatMoney(Number(line.precio_especial ?? line.precio ?? line.precio_base ?? 0))}
                   </Text>
                   <Text style={styles.metaRow}>
                     Importe final: {formatMoney(Number(line.importe ?? 0))}
